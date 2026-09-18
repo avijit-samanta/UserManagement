@@ -1,0 +1,54 @@
+{
+  "roles": [
+    {
+      "role": "admin",
+      "label": "Administrator",
+      "credentials": {
+        "email": "admin@example.com",
+        "password": "Admin@123"
+      },
+      "storageStateFile": "admin.json",
+      "loginSuccessTestId": "nav-user-profiles",
+      "expectedVisibleNavTestIds": ["nav-user-profiles", "nav-query-management"],
+      "expectedAbsentNavTestIds": ["nav-my-profile", "nav-new-request", "nav-my-tickets"],
+      "apiChecks": [
+        {
+          "description": "admin can list all users",
+          "endpoint": "/api/users",
+          "expectedStatus": 200
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "label": "Regular User",
+      "credentials": {
+        "email": "user@example.com",
+        "password": "User@123"
+      },
+      "storageStateFile": "user.json",
+      "loginSuccessTestId": "nav-my-profile",
+      "expectedVisibleNavTestIds": ["nav-my-profile", "nav-new-request", "nav-my-tickets"],
+      "expectedAbsentNavTestIds": ["nav-user-profiles", "nav-query-management"],
+      "apiChecks": [
+        {
+          "description": "regular user is forbidden from listing all users",
+          "endpoint": "/api/users",
+          "expectedStatus": 403
+        }
+      ]
+    }
+  ],
+  "profileUpdate": {
+    "user": {
+      "name": "Jamie Q. Automation",
+      "email": "user@example.com",
+      "phone": "+1 (555) 010-9999",
+      "address": "42 Automation Way, QA City"
+    }
+  },
+  "newTicket": {
+    "title": "Automated QA check-in",
+    "description": "Created by the Playwright data-driven suite to verify the submit-request flow."
+  }
+}

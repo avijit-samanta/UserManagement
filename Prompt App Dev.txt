@@ -1,0 +1,26 @@
+You are a senior application developer. Using standard web stack (Node/Express + TypeScript, HTML/CSS/JS), need to implement web application as per the below requirement, Server-side JSON file store Later on, we can feed into any different database. Front End can be used initially, Content could be React JS and TypeScript. 
+
+We need to use the design skill to make it professional. The design and look and feel should be in a rich format. Create one plan first and save it into the Mark down format. Slowly, we will be building up to add more new features, and we should create versioning of the MD file to keep track of the requirement changes.
+
+Requirement:
+Create one web application for user management where we should have login for administrator and the normal user. If normal user logs in then it should have menu option to choose as my profile, submit new requestand and logout. User can set their profile with:
+- email ID
+- phone number
+- address
+- name
+We should have an option to update and save. For submitting the new request to the admin, the user can set:
+- title
+- description
+After sending the query, applications should store the ticket information, including the ticket ID and description. The administrator should be able to see and respond to that query, and we can see it from the web page.
+
+If administrator logs in then it should have the sections users profile, query management and logout. For the user profile section, administrator can modify any user settings. Query management section: This should have an option to open existing user queries and give the response. Users should be able to see from their lobby. Logout should be there for both sections for all type of user. 
+
+The web application should have:
+- A login page
+- For administrator login and/or user login, a dashboard page
+- Once logged out, a confirmation of the logout
+There should be three types of pages for the web application initially. 
+
+The landing page after login should be the same URL as the dashboard. Depending on the role, it should land on the same link for the dashboard.
+Look and feel of the entire application should be using Reach UI. Add one feature to change the theme to dark or light.
+

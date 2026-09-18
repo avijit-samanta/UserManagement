@@ -1,0 +1,100 @@
+{
+  "users": [
+    {
+      "id": "62cd93f5-f92f-4cc7-9cd0-7a18c32944be",
+      "email": "admin@example.com",
+      "passwordHash": "$2a$10$fmX2Zowrv/T/W.hlpiwf0.oW0qT45Sq./sL73fF66r5v4wnlIyc06",
+      "role": "admin",
+      "name": "Alex Administrator",
+      "phone": "+1 (555) 010-0001",
+      "address": "100 Admin Plaza, Suite 1, Metropolis",
+      "createdAt": "2026-09-18T19:09:34.115Z",
+      "updatedAt": "2026-09-18T19:09:34.115Z"
+    },
+    {
+      "id": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "email": "user@example.com",
+      "passwordHash": "$2a$10$nv8XDcJmMtzih00QG6rLSep6e42bp8B.DgYZApGwFyYLDTgF6Mxm2",
+      "role": "user",
+      "name": "Jamie Q. Automation",
+      "phone": "+1 (555) 010-9999",
+      "address": "42 Automation Way, QA City",
+      "createdAt": "2026-09-18T19:09:34.115Z",
+      "updatedAt": "2026-09-18T20:27:26.503Z"
+    }
+  ],
+  "tickets": [
+    {
+      "id": "TCK-000001",
+      "title": "Cannot access reports",
+      "description": "The reports page shows a blank screen since yesterday.",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. User",
+      "status": "answered",
+      "adminResponse": "This was caused by a caching bug and has been fixed. Please refresh.",
+      "respondedBy": "62cd93f5-f92f-4cc7-9cd0-7a18c32944be",
+      "createdAt": "2026-09-18T19:10:09.901Z",
+      "updatedAt": "2026-09-18T19:10:18.005Z"
+    },
+    {
+      "id": "TCK-000002",
+      "title": "Need Playwright Tutorial",
+      "description": "Tutorial details along with Video",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. User",
+      "status": "answered",
+      "adminResponse": "Okay, I'll give you that in the next 1 day.",
+      "respondedBy": "62cd93f5-f92f-4cc7-9cd0-7a18c32944be",
+      "createdAt": "2026-09-18T19:14:48.667Z",
+      "updatedAt": "2026-09-18T19:15:26.966Z"
+    },
+    {
+      "id": "TCK-000003",
+      "title": "Automated QA check-in 1789762331219",
+      "description": "Created by the Playwright data-driven suite to verify the submit-request flow.",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. Automation",
+      "status": "open",
+      "adminResponse": null,
+      "respondedBy": null,
+      "createdAt": "2026-09-18T20:12:11.501Z",
+      "updatedAt": "2026-09-18T20:12:11.501Z"
+    },
+    {
+      "id": "TCK-000004",
+      "title": "Automated QA check-in 1789762464642",
+      "description": "Created by the Playwright data-driven suite to verify the submit-request flow.",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. Automation",
+      "status": "open",
+      "adminResponse": null,
+      "respondedBy": null,
+      "createdAt": "2026-09-18T20:14:24.980Z",
+      "updatedAt": "2026-09-18T20:14:24.980Z"
+    },
+    {
+      "id": "TCK-000005",
+      "title": "Automated QA check-in 1789762581090",
+      "description": "Created by the Playwright data-driven suite to verify the submit-request flow.",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. Automation",
+      "status": "open",
+      "adminResponse": null,
+      "respondedBy": null,
+      "createdAt": "2026-09-18T20:16:21.219Z",
+      "updatedAt": "2026-09-18T20:16:21.219Z"
+    },
+    {
+      "id": "TCK-000006",
+      "title": "Automated QA check-in 1789762853798",
+      "description": "Created by the Playwright data-driven suite to verify the submit-request flow.",
+      "submittedBy": "29d53f6d-092f-4b5f-95dd-4c0d84d63d93",
+      "submittedByName": "Jamie Q. Automation",
+      "status": "open",
+      "adminResponse": null,
+      "respondedBy": null,
+      "createdAt": "2026-09-18T20:20:54.306Z",
+      "updatedAt": "2026-09-18T20:20:54.306Z"
+    }
+  ]
+}
