@@ -243,7 +243,8 @@ docker run --name simplehelpdesk -p 8080:8080 -p 4443:4443 \
 ### Step 5 — Verify it's working
 
 ```bash
-# container is up and healthy
+# container is up — the STATUS column should say "Up ... (healthy)" once
+# the Dockerfile's HEALTHCHECK has run at least once (~10s start period)
 docker compose ps
 
 # tail logs — with a cert mounted, look for
@@ -252,12 +253,18 @@ docker compose ps
 # without one, just "HTTP server listening on http://localhost:8080"
 docker compose logs -f app
 
+# the health check endpoint itself — answers 200 on PORT either way
+# (directly, or via the redirect-only server's special case for this path)
+curl http://localhost:8080/healthz
+
 # confirm the API responds on whichever port(s) are active
 curl -k https://localhost:4443/api/auth/me   # only if a cert is mounted
 curl -i http://localhost:8080/api/auth/me    # 401/200 JSON if HTTP-only, or a 301 redirect if HTTPS is active
 ```
 
 Then open the app in a browser (see Step 4 for which URL) and log in with the seeded demo accounts (see [Getting started](#getting-started) above) to confirm the full UI loads and authenticates against the containerized API.
+
+**Health check**: `GET /healthz` (`server/src/routes/health.ts`) returns `{"status":"ok","uptimeSeconds":...,"timestamp":"..."}`, no auth required. The `Dockerfile`'s `HEALTHCHECK` instruction polls it every 30s — that's what makes `docker compose ps` / `docker ps` show real `healthy`/`unhealthy` status instead of just "process is running." It works identically whether the app is serving `PORT` directly or that port is redirect-only (HTTPS active) — see [Running over HTTPS](#running-over-https).
 
 ### Stopping, rebuilding, and cleaning up
 
@@ -291,15 +298,17 @@ docker compose build --no-cache
 [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push and pull request to `main`. Each stage gates the next — nothing downstream runs unless everything before it passed:
 
 ```
-build-and-typecheck  →  regression-tests  →  build-and-push-image  →  deploy-staging  →  deploy-production
-   (every push/PR)      (every push/PR,        (main only, on push)      (auto)           (manual approval)
-                          the merge gate)
+build-and-typecheck ─┐
+                      ├─▶ regression-tests → build-and-push-image → deploy-staging → deploy-production
+        unit-tests ───┘      (the merge gate)  (main only, on push)      (auto)        (manual approval)
+   (parallel, every push/PR)
 ```
 
 | Stage | What it does | Runs on |
 |---|---|---|
 | **`build-and-typecheck`** | `npm ci --legacy-peer-deps` then `npm run build` — typechecks and builds both `client` and `server`. Same failure mode as a local build error. | Every push and PR to `main` |
-| **`regression-tests`** | Installs Playwright's Chromium browser and runs the **entire** Playwright suite (`npx playwright test --project=chromium`) — this is the merge/deploy gate described in [Regression testing policy](#regression-testing-policy--impact-matrix) below. Uploads `playwright-report/` as a build artifact (14-day retention) whether it passes or fails, so a CI failure can be debugged with the same trace viewer used locally. | Every push and PR to `main` |
+| **`unit-tests`** | `npm run test:unit:coverage` — the 30-case [Vitest suite](#unit-testing-vitest), in parallel with `build-and-typecheck` (both fast, so no added pipeline time). Uploads the coverage report as a build artifact. | Every push and PR to `main` |
+| **`regression-tests`** | Needs **both** of the above to pass. Installs Playwright's Chromium browser and runs the **entire** Playwright suite (`npx playwright test --project=chromium`) — this is the merge/deploy gate described in [Regression testing policy](#regression-testing-policy--impact-matrix) below. Uploads `playwright-report/` as a build artifact (14-day retention) whether it passes or fails, so a CI failure can be debugged with the same trace viewer used locally. | Every push and PR to `main` |
 | **`build-and-push-image`** | Builds the [Dockerfile](#containerization-docker) and pushes it to GitHub Container Registry (`ghcr.io/avijit-samanta/usermanagement`) tagged with both the commit SHA and `latest`. Uses the repo's built-in `GITHUB_TOKEN` — no registry secrets to configure. | Only on a **push to `main`** (not PRs) |
 | **`deploy-staging`** | Placeholder — pulls and runs the just-built image against a staging target. Uses a GitHub **Environment** named `staging` (no required reviewers, so it deploys automatically). | After a successful image push |
 | **`deploy-production`** | Placeholder — same deploy, against production. Uses a GitHub **Environment** named `production`. | After a successful staging deploy |
@@ -344,6 +353,8 @@ Key seams:
 - `server/src/routes/tickets.ts` — `PUT /:id/respond` appends a message (admin **or** the ticket's own submitter, blocked once `closed`; a user's message flips status to `open`, an admin's to `answered`), `PUT /:id/close` (admin only), `PUT /:id/reopen` (ticket submitter only, only from `closed`).
 - `server/src/routes/auth.ts` — `POST /auth/register` is public self-registration (choosing `admin` or `user`); `server/src/routes/users.ts`'s `POST /users` is the admin-only "add user directly" equivalent.
 - `server/src/index.ts` — decides HTTP-only vs. HTTP+HTTPS based on whether `certs/key.pem`/`certs/cert.pem` exist (see [Running over HTTPS](#running-over-https)).
+- `server/src/routes/health.ts` — `GET /healthz`, unauthenticated, polled by the Dockerfile's `HEALTHCHECK`.
+- `server/src/**/*.test.ts` — the [Vitest unit suite](#unit-testing-vitest); excluded from the production build via `server/tsconfig.json`'s `exclude`.
 - `scripts/generate-certs.sh` — generates a local self-signed TLS cert/key pair (`npm run certs:generate`).
 - `.github/workflows/ci-cd.yml` — the CI/CD pipeline (see [CI/CD Pipeline](#cicd-pipeline)); the Playwright regression suite is its merge/deploy gate.
 - `client/src/api/` — typed fetch wrappers per resource.
@@ -352,6 +363,29 @@ Key seams:
 - `client/src/hooks/useTheme.ts` — the light/dark theme hook, shared by `AppShell` (post-login) and the login/register pages (pre-login).
 - `client/src/components/layout/AppShell.tsx` — the persistent header (user menu with theme toggle + logout) and the `Tabs`-based section nav, shared by both dashboards.
 - `client/src/styles/tokens.css` — design tokens (colors, type scale, spacing, radius, shadow); `client/src/styles/global.css` also carries the style overrides for Reach UI's `Tabs`, `Menu`, and `Dialog` components.
+
+## Unit Testing (Vitest)
+
+Server-side only, isolated from the real `data/db.json` — repository tests point `DB_PATH` at a throwaway temp file (see `server/src/data/db.ts`), never your real data.
+
+```bash
+npm run test:unit            # run once (used by CI)
+npm run test:unit:watch      # re-run on every save
+npm run test:unit:coverage   # with a coverage report (server/coverage/, gitignored)
+```
+
+**30 tests across 6 files** (`server/src/**/*.test.ts`, excluded from the production build via `server/tsconfig.json`'s `exclude`):
+
+| File | Tests | What it covers |
+|---|---|---|
+| `utils/password.test.ts` | 5 | Hashing produces a real bcrypt hash with a unique salt per call; verification accepts the right password, rejects a wrong or empty one. |
+| `utils/id.test.ts` | 6 | UUID shape/uniqueness; ticket ID formatting and monotonic increase (including catching up to a larger existing count); message ID uniqueness under rapid calls. |
+| `middleware/requireAuth.test.ts` | 2 | `next()` when authenticated; `401` when not. |
+| `middleware/requireRole.test.ts` | 3 | `next()` for a matching role; `403` for the wrong role; `401` for no user. |
+| `data/repositories/userRepository.test.ts` | 5 | `create()`/`findByEmail()` (case-insensitive)/`update()` (partial-field, `undefined` for a missing user). |
+| `data/repositories/ticketRepository.test.ts` | 9 | **The two-way conversation state machine**: an admin message → `answered`, a submitter message → `open` (even from `answered`), messages accumulate in order, plus `close()`/`reopen()` and `list()`/`listByUser()` ordering/filtering. |
+
+Add a new test by dropping a `*.test.ts` file next to the code it tests — Vitest picks up anything matching `src/**/*.test.ts` (see `server/vitest.config.ts`) with no registration step needed.
 
 ## QA Testing (Playwright)
 

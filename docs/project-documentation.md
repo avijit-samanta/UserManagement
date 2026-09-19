@@ -15,7 +15,7 @@ A help desk web app with two roles — **Administrator** and **Normal User** —
 | **Data store** | A single local JSON file (`data/db.json`) behind a repository interface — not a real database (see §2, "things to understand before starting") |
 | **Auth** | HttpOnly session cookie, in-memory session store (server restart clears sessions, not user data) |
 | **UI library** | [Reach UI](https://reach.tech/) for accessible `Tabs`, `Menu`, `Dialog` |
-| **Testing** | Playwright (E2E/integration only — see §4, there is no unit test suite yet) |
+| **Testing** | Vitest (30 unit tests, server-side) + Playwright (13 E2E/integration cases) — see §4 |
 | **CI/CD** | GitHub Actions (`.github/workflows/ci-cd.yml`) |
 | **Containerization** | Docker, multi-stage build, optional in-process HTTPS |
 
@@ -29,7 +29,7 @@ These are the load-bearing decisions that shape everything else in this document
 2. **`data/db.json` is real user data, not disposable test output.** It's gitignored, has no backup, and there is no undo. Do not delete or reseed it as part of "cleanup" — that has actually happened once in this project's history and it cost real data. If you need an isolated database for testing, use the `DB_PATH` env var (`server/src/data/db.ts`) to point at a throwaway file instead.
 3. **Self-registration is wide open by design, not by oversight.** `/register` lets anyone create an **Administrator** account with no approval step. That's a deliberate simplification for this app's current scope — see the README's "Security note on open registration" before deploying this anywhere public. Fixing it means gating admin signups (invite code, email allow-list, or removing the role choice from public registration and promoting to admin manually).
 4. **Dev and production are structurally separated by port, on purpose.** Dev (`npm run dev`) always uses `4000`/`5173` and always stays plain HTTP; production (`npm start` / Docker) defaults to `8080`/`4443` and goes HTTPS the moment a certificate exists. This was a real bug once (a certificate accidentally present made dev mode's API proxy break) — see README's "Running over HTTPS" for the full story. Don't "fix" the port numbers back to matching without understanding why they're deliberately different.
-5. **There is no unit test suite.** Testing today is 100% Playwright, driving the real UI against the real (file-backed) API. See §4 for what that does and doesn't cover, and what a unit test layer would add.
+5. **Testing is two layers, not one.** Fast, isolated Vitest unit tests (`server/src/**/*.test.ts`) for business logic and pure functions, plus the slower Playwright suite driving the real UI against the real (file-backed) API for end-to-end behavior. See §4 for exactly what each does and doesn't cover.
 6. **The ticket conversation is two-way.** Both the admin and the ticket's own submitter can post messages; a submitter's message flips status back to `open` (needs admin attention), an admin's message sets it to `answered`. Nobody else can post to a ticket that isn't theirs (`403`).
 
 ---
@@ -74,20 +74,28 @@ These are the load-bearing decisions that shape everything else in this document
 
 ## 4. Testing strategy
 
-### 4a. Unit tests — **not currently implemented**
+### 4a. Unit tests (Vitest) — **30 tests across 6 files**
 
-There is no unit test suite (no Jest/Vitest, no isolated tests of a single function or module). Everything is tested through Playwright driving the real browser against the real running app. This is a real gap, not a stylistic choice — worth knowing before you assume coverage that doesn't exist.
+Runs against `server/src` directly (no build step needed), isolated from the real `data/db.json` (see §2, point 2 — repository tests point `DB_PATH` at a throwaway temp file, never the real one).
 
-If/when a unit layer is added, the natural first candidates (small, pure, currently untested in isolation) are:
+```bash
+npm run test:unit            # run once
+npm run test:unit:watch      # re-run on save
+npm run test:unit:coverage   # with a coverage report (server/coverage/, gitignored)
+```
 
-| Candidate | File | Why it's a good unit-test target |
+| File | Tests | What it covers |
 |---|---|---|
-| Password hashing/verification | `server/src/utils/password.ts` | Pure function, security-sensitive, cheap to test exhaustively (correct password, wrong password, empty string). |
-| ID generation | `server/src/utils/id.ts` | Deterministic-enough logic (ticket ID padding/sequencing, message ID uniqueness) that's easy to assert on directly. |
-| Repository logic | `server/src/data/repositories/{user,ticket}Repository.ts` | Business rules like "a user message reopens the ticket, an admin message answers it" are currently only verified end-to-end through the UI — a unit test would catch a regression here in milliseconds instead of during a 45-second Playwright run. |
-| Auth/role middleware | `server/src/middleware/{requireAuth,requireRole}.ts` | Small, pure request/response logic — easy to test with mock `req`/`res` objects without booting the whole app. |
+| `server/src/utils/password.test.ts` | 5 | Hashing produces a real bcrypt hash (not plaintext) with a unique salt per call; verification accepts the right password and rejects a wrong or empty one. |
+| `server/src/utils/id.test.ts` | 6 | UUID shape/uniqueness; ticket ID formatting (`TCK-000123`) and monotonic increase, including catching up when handed a larger existing count; message ID uniqueness under rapid calls. |
+| `server/src/middleware/requireAuth.test.ts` | 2 | Calls `next()` when `req.user` is set; responds `401` and skips `next()` when it isn't. |
+| `server/src/middleware/requireRole.test.ts` | 3 | Calls `next()` for a matching role; `403` for a logged-in user with the wrong role; `401` for no user at all. |
+| `server/src/data/repositories/userRepository.test.ts` | 5 | `create()` sets matching `createdAt`/`updatedAt`; `findByEmail()` is case-insensitive and returns `undefined` for no match; `update()` only touches the fields given and returns `undefined` for a nonexistent id. |
+| `server/src/data/repositories/ticketRepository.test.ts` | 9 | **The two-way conversation state machine** — the exact business rule that motivated adding this test layer: an admin message sets `answered`, a submitter message sets `open` (even from `answered`), messages accumulate in order, a nonexistent ticket id returns `undefined`; plus `close()`/`reopen()`, and `list()`/`listByUser()` ordering and filtering. |
 
-Recommended tool if this gets built out: **Vitest** — shares config style with the existing Vite/TS toolchain, needs no separate transpilation setup, and can run against the compiled `server/dist` or directly against `server/src` with `ts-node`/`esbuild`-style transforms.
+This is what closes the original gap flagged when this document was first written: repository business rules (like "a user reply reopens the ticket") used to only be verified end-to-end through a ~45-second Playwright run. Now a regression there fails in milliseconds, locally, before a browser is ever launched.
+
+**Still not unit-tested** (reasonable next candidates, in roughly descending priority): the route handlers themselves (`server/src/routes/*.ts`) — currently only covered by Playwright hitting them over HTTP through the full app; the session module (`server/src/middleware/session.ts`) — cookie creation/expiry logic; the DB write-lock/atomic-rename logic in `server/src/data/db.ts` under concurrent writes.
 
 ### 4b. QA / regression suite (Playwright) — what actually exists today
 
@@ -123,14 +131,17 @@ Recommended tool if this gets built out: **Vitest** — shares config style with
 `.github/workflows/ci-cd.yml` runs on every push/PR to `main`:
 
 ```
-build-and-typecheck → regression-tests → build-and-push-image → deploy-staging → deploy-production
-   (every push/PR)      (the hard gate)     (main only, on push)      (auto)        (manual approval)
+build-and-typecheck ─┐
+                      ├─▶ regression-tests → build-and-push-image → deploy-staging → deploy-production
+        unit-tests ───┘      (the hard gate)     (main only, on push)      (auto)        (manual approval)
+   (both run in parallel, every push/PR)
 ```
 
 | Stage | What it does today |
 |---|---|
 | `build-and-typecheck` | `npm ci` + `npm run build` (typechecks and builds both client and server). |
-| `regression-tests` | Installs Chromium, runs the full 13-case Playwright suite. Uploads the HTML report as an artifact regardless of pass/fail. |
+| `unit-tests` | Runs the 30-case Vitest suite (`npm run test:unit:coverage`) in parallel with `build-and-typecheck` — both are fast, so this doesn't add to pipeline time. Uploads the coverage report as an artifact. |
+| `regression-tests` | Needs **both** of the above to pass first. Installs Chromium, runs the full 13-case Playwright suite. Uploads the HTML report as an artifact regardless of pass/fail. |
 | `build-and-push-image` | Builds the Docker image, pushes to GHCR (`ghcr.io/<owner>/<repo>`) tagged with the commit SHA and `latest`. Uses the repo's built-in `GITHUB_TOKEN` — no registry secrets needed. |
 | `deploy-staging` / `deploy-production` | **Placeholders.** They currently just `echo` what they'd do. Production is gated behind a GitHub Environment with required reviewers — the manual-approval mechanism already exists, it just has nothing real to deploy to yet. |
 
@@ -142,10 +153,10 @@ build-and-typecheck → regression-tests → build-and-push-image → deploy-sta
 4. Nothing else in the pipeline changes — the gate order (tests must pass → image must build → staging must succeed → production needs a human click) stays exactly as-is.
 
 **Extending the pipeline further**, in likely order of usefulness:
-- **Unit tests**, once they exist (§4a) — add as a job between `build-and-typecheck` and `regression-tests` so a cheap, fast failure blocks before the slower Playwright run even starts.
 - **Full cross-browser matrix in CI** — add a Windows or macOS runner (or install Edge on the Linux runner) so `--project=edge` isn't Chromium-only there too.
-- **Automated rollback** — if a production deploy step fails health checks, redeploy the previous image tag automatically rather than leaving it to a human.
+- **Automated rollback** — if a production deploy step fails its `/healthz` check post-deploy, redeploy the previous image tag automatically rather than leaving it to a human.
 - **Slack/Teams notification** on pipeline failure or on a successful production deploy.
+- **Coverage threshold gate** — fail `unit-tests` if coverage drops below a set percentage, once there's a baseline worth protecting.
 
 ---
 
@@ -157,13 +168,14 @@ Already built (see README's "Containerization (Docker)" for the step-by-step):
 - **`docker-compose.yml`** — one command (`docker compose up --build`) builds and runs it, with the data volume and a certs bind-mount already wired up.
 - **HTTPS is opportunistic**: mount a cert at `certs/` (generate one with `npm run certs:generate`) and the container serves HTTPS + an HTTP→HTTPS redirect on two ports; omit it and it's HTTP-only on one port. No code change needed either way — same image.
 - **Data persistence**: a named volume (`simplehelpdesk-data`) survives container recreation; without it, every recreated container starts from the two seeded demo accounts again (see §2, point 2 — this is exactly the kind of accidental reset to avoid, just at the container-lifecycle level instead of a stray `rm`).
+- **Health check**: `GET /healthz` (`server/src/routes/health.ts`) returns `{status:"ok", uptimeSeconds, timestamp}` with no auth required. It answers correctly on `PORT` whether that port is serving the app directly or is redirect-only (HTTPS active) — the redirect server special-cases this one path instead of 301'ing it. The `Dockerfile`'s `HEALTHCHECK` instruction polls it every 30s; `docker compose ps` / `docker ps` now show real `healthy`/`unhealthy` status, not just "process is running."
 
 **What's realistically next, in likely priority order:**
 1. **A real database.** The repository-interface seam (§2, point 1) means this is the single highest-leverage change — it removes the entire "shared JSON file" class of problem (single point of failure, no concurrent-write safety across multiple container replicas, no real backup story).
 2. **Multi-replica readiness.** Right now the app can only ever run as one instance because sessions are in-memory (`server/src/middleware/session.ts`) and data is a single local file with an in-process write lock — neither survives or coordinates across replicas. Fixing this requires an external session store (Redis, or a signed JWT instead of a server-side session) *and* the real-database migration above.
 3. **A managed secrets story for HTTPS certs** — right now certs are a manually-generated, manually-mounted local file. In a real deployment, that becomes a cert-manager/Let's Encrypt/load-balancer-terminated-TLS setup instead of `npm run certs:generate`.
-4. **Health check endpoint** (`GET /healthz` or similar) — nothing currently exists for an orchestrator (Docker Compose's `healthcheck:`, Kubernetes liveness/readiness probes) to poll; `docker compose ps` today can only tell you the process is running, not that it's actually serving traffic correctly.
-5. **Structured logging** — current output is plain `console.log`/`console.warn` lines to stdout. Fine for `docker compose logs`, but a real deployment behind a log aggregator (CloudWatch, Loki, ELK) benefits from structured JSON logs with request IDs.
+4. **Structured logging** — current output is plain `console.log`/`console.warn` lines to stdout. Fine for `docker compose logs`, but a real deployment behind a log aggregator (CloudWatch, Loki, ELK) benefits from structured JSON logs with request IDs.
+5. **A deeper health check** — today `/healthz` only proves the Node process is alive and answering HTTP, not that it can actually read/write `data/db.json`. A "readiness" variant that does a real DB round-trip would catch a mounted-volume-permissions problem that a liveness-only check can't.
 
 ---
 

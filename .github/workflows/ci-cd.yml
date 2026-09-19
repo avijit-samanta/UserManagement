@@ -1,9 +1,11 @@
 name: CI/CD
 
-# Every push/PR runs build+typecheck and the full regression suite. Only a
-# push to main (i.e. a merged PR) goes on to build the Docker image and
-# walk it through staging -> production. Each stage gates the next — a
-# failure anywhere stops the pipeline before it reaches deployment.
+# Every push/PR runs build+typecheck, unit tests, and the full Playwright
+# regression suite. Only a push to main (i.e. a merged PR) goes on to build
+# the Docker image and walk it through staging -> production. Each stage
+# gates the next — a failure anywhere stops the pipeline before it reaches
+# deployment. Unit tests run in parallel with build-and-typecheck (both are
+# fast) so the slower Playwright suite only starts once both have passed.
 on:
   push:
     branches: [main]
@@ -28,9 +30,29 @@ jobs:
       - name: Typecheck + build client and server
         run: npm run build
 
+  unit-tests:
+    name: Unit tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --legacy-peer-deps
+      - name: Run server unit tests with coverage
+        run: npm run test:unit:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-coverage
+          path: server/coverage/
+          retention-days: 14
+
   regression-tests:
     name: Regression tests (Playwright)
-    needs: build-and-typecheck
+    needs: [build-and-typecheck, unit-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

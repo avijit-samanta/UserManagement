@@ -8,6 +8,7 @@ import { seedIfNeeded } from './data/seed';
 import { attachUser } from './middleware/session';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './utils/asyncHandler';
+import healthRoutes from './routes/health';
 import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
 import usersRoutes from './routes/users';
@@ -47,6 +48,10 @@ async function main() {
   app.use(cookieParser());
   app.use(asyncHandler(attachUser));
 
+  // Unauthenticated on purpose — registered before any /api/* route so it
+  // never depends on session/DB state to answer "am I up".
+  app.use('/healthz', healthRoutes);
+
   app.use('/api/auth', authRoutes);
   app.use('/api/profile', profileRoutes);
   app.use('/api/users', usersRoutes);
@@ -84,8 +89,16 @@ async function main() {
 
     // ...and PORT stays open only to redirect stray HTTP requests to it, so
     // the app is reachable on both ports without ever serving plaintext.
+    // /healthz is the one exception: a health check hitting the plain HTTP
+    // port should get a real answer, not a 301 it would have to follow (and
+    // possibly fail TLS-trust on) just to learn the process is alive.
     http
       .createServer((req, res) => {
+        if (req.url === '/healthz') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok', mode: 'redirect-only' }));
+          return;
+        }
         const host = (req.headers.host ?? `localhost:${PORT}`).split(':')[0];
         res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url ?? ''}` });
         res.end();

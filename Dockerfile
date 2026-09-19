@@ -48,4 +48,12 @@ USER node
 EXPOSE 8080
 EXPOSE 4443
 
+# /healthz answers 200 on PORT whether it's serving the app directly (no
+# cert mounted) or running redirect-only (cert mounted, real app on
+# HTTPS_PORT) — see server/src/index.ts and server/src/routes/health.ts.
+# Exec form so this runs as a direct process (no shell), while still
+# inheriting the container's PORT env var.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "require('http').get({host:'127.0.0.1',port:process.env.PORT||8080,path:'/healthz',timeout:4000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+
 CMD ["node", "server/dist/index.js"]

@@ -1,5 +1,7 @@
 # QA Testing — Role-Based UI Test Suite (Playwright)
 
+This document covers the **end-to-end/integration layer** (Playwright, driving the real UI against the real API). There is a separate, faster **unit test layer** (Vitest, 30 tests, `server/src/**/*.test.ts`) covering pure functions and repository business logic in isolation — see the README's [Unit Testing (Vitest)](../README.md#unit-testing-vitest) section for that one; it isn't duplicated here.
+
 ## 1. Objective
 
 Validate, automatically and without duplicated login steps, that Simple Help Desk enforces the right access boundaries for its two roles:
