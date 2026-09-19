@@ -1,34 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@reach/tabs';
 import { Menu, MenuButton, MenuList, MenuItem } from '@reach/menu-button';
 import { useAuth } from '../../auth/AuthContext';
+import { useTheme } from '../../hooks/useTheme';
 
 export interface ShellSection {
   key: string;
   label: string;
   content: ReactNode;
-}
-
-function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try {
-      return (localStorage.getItem('theme') as 'light' | 'dark') ?? 'light';
-    } catch {
-      return 'light';
-    }
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    try {
-      localStorage.setItem('theme', theme);
-    } catch {
-      // ignore storage failures (private browsing, etc.)
-    }
-  }, [theme]);
-
-  return { theme, toggle: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };
 }
 
 export function AppShell({ sections }: { sections: ShellSection[] }) {
@@ -53,7 +33,7 @@ export function AppShell({ sections }: { sections: ShellSection[] }) {
       <header className="app-header">
         <div className="app-header-brand">
           <div className="app-header-mark" />
-          <span className="app-header-title">NimbusDesk</span>
+          <span className="app-header-title">Simple Help Desk</span>
         </div>
         <div className="app-header-right">
           <Menu>

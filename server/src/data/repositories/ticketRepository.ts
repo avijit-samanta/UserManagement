@@ -1,6 +1,6 @@
 import { readDb, writeDb } from '../db';
-import { generateTicketId } from '../../utils/id';
-import type { Ticket } from '../../models/types';
+import { generateTicketId, generateMessageId } from '../../utils/id';
+import type { Role, Ticket } from '../../models/types';
 
 export interface CreateTicketInput {
   title: string;
@@ -35,8 +35,7 @@ export const ticketRepository = {
       submittedBy: input.submittedBy,
       submittedByName: input.submittedByName,
       status: 'open',
-      adminResponse: null,
-      respondedBy: null,
+      messages: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -45,14 +44,53 @@ export const ticketRepository = {
     return ticket;
   },
 
-  async respond(id: string, response: string, respondedBy: string): Promise<Ticket | undefined> {
+  async addMessage(
+    id: string,
+    body: string,
+    authorId: string,
+    authorName: string,
+    authorRole: Role,
+  ): Promise<Ticket | undefined> {
     const db = await readDb();
     const ticket = db.tickets.find((t) => t.id === id);
     if (!ticket) return undefined;
 
-    ticket.adminResponse = response;
-    ticket.respondedBy = respondedBy;
-    ticket.status = 'answered';
+    const now = new Date().toISOString();
+    ticket.messages.push({
+      id: generateMessageId(),
+      body,
+      authorId,
+      authorName,
+      authorRole,
+      createdAt: now,
+    });
+    // An admin message means the ball's back in the submitter's court;
+    // a message from the submitter means it needs admin attention again.
+    ticket.status = authorRole === 'admin' ? 'answered' : 'open';
+    ticket.updatedAt = now;
+
+    await writeDb(db);
+    return ticket;
+  },
+
+  async close(id: string): Promise<Ticket | undefined> {
+    const db = await readDb();
+    const ticket = db.tickets.find((t) => t.id === id);
+    if (!ticket) return undefined;
+
+    ticket.status = 'closed';
+    ticket.updatedAt = new Date().toISOString();
+
+    await writeDb(db);
+    return ticket;
+  },
+
+  async reopen(id: string): Promise<Ticket | undefined> {
+    const db = await readDb();
+    const ticket = db.tickets.find((t) => t.id === id);
+    if (!ticket) return undefined;
+
+    ticket.status = 'open';
     ticket.updatedAt = new Date().toISOString();
 
     await writeDb(db);

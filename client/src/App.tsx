@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { LoginPage } from './routes/LoginPage';
+import { RegisterPage } from './routes/RegisterPage';
 import { LogoutConfirmPage } from './routes/LogoutConfirmPage';
 import { DashboardPage } from './routes/DashboardPage';
 
@@ -18,6 +19,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/logout" element={<LogoutConfirmPage />} />
 
           <Route element={<RequireAuth />}>

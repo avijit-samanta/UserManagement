@@ -32,10 +32,38 @@ export interface NewTicketData {
   description: string;
 }
 
+export interface RegistrationScenario {
+  role: 'admin' | 'user';
+  name: string;
+  emailPrefix: string;
+  password: string;
+  phone: string;
+  address: string;
+  loginSuccessTestId: string;
+}
+
+export interface AdminAddUserData {
+  name: string;
+  password: string;
+  phone: string;
+  address: string;
+  role: 'admin' | 'user';
+}
+
+export interface TicketConversationData {
+  title: string;
+  description: string;
+  adminMessages: string[];
+  userReply: string;
+}
+
 export interface TestData {
   roles: RoleTestData[];
   profileUpdate: {
     user: ProfileUpdateData;
   };
   newTicket: NewTicketData;
+  registration: RegistrationScenario[];
+  adminAddUser: AdminAddUserData;
+  ticketConversation: TicketConversationData;
 }

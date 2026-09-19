@@ -16,12 +16,28 @@ function MyTicketsSection() {
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function refresh() {
+    const { tickets } = await ticketsApi.list();
+    setTickets(tickets);
+  }
+
   useEffect(() => {
-    ticketsApi
-      .list()
-      .then(({ tickets }) => setTickets(tickets))
-      .finally(() => setLoading(false));
+    refresh().finally(() => setLoading(false));
   }, []);
+
+  async function handleRespond(response: string) {
+    if (!selected) return;
+    const { ticket } = await ticketsApi.respond(selected.id, response);
+    setSelected(ticket);
+    await refresh();
+  }
+
+  async function handleReopen() {
+    if (!selected) return;
+    const { ticket } = await ticketsApi.reopen(selected.id);
+    setSelected(ticket);
+    await refresh();
+  }
 
   return (
     <Card title="My Tickets" subtitle={`${tickets.length} submitted`}>
@@ -33,7 +49,9 @@ function MyTicketsSection() {
 
       <DialogOverlay isOpen={!!selected} onDismiss={() => setSelected(null)} className="app-dialog-overlay">
         <DialogContent className="app-dialog-content" aria-label="Ticket details">
-          {selected && <TicketDetail ticket={selected} canRespond={false} />}
+          {selected && (
+            <TicketDetail ticket={selected} canReply canReopen onRespond={handleRespond} onReopen={handleReopen} />
+          )}
         </DialogContent>
       </DialogOverlay>
     </Card>

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { authApi } from '../api/auth';
+import { authApi, type RegisterInput } from '../api/auth';
 import { ApiError } from '../api/client';
 import type { PublicUser } from '../types';
 
@@ -9,6 +9,7 @@ interface AuthContextValue {
   user: PublicUser | null;
   status: Status;
   login: (email: string, password: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (user: PublicUser) => void;
 }
@@ -37,6 +38,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authenticated');
   }, []);
 
+  const register = useCallback(async (input: RegisterInput) => {
+    const { user } = await authApi.register(input);
+    setUser(user);
+    setStatus('authenticated');
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -49,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, status, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, status, login, register, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

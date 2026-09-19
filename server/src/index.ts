@@ -2,6 +2,8 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
 import { seedIfNeeded } from './data/seed';
 import { attachUser } from './middleware/session';
 import { errorHandler } from './middleware/errorHandler';
@@ -11,12 +13,31 @@ import profileRoutes from './routes/profile';
 import usersRoutes from './routes/users';
 import ticketsRoutes from './routes/tickets';
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+// Default 8080, not 4000: dev mode (server/package.json's "dev" script)
+// explicitly sets PORT=4000 to match the Vite proxy target in
+// client/vite.config.ts, so this fallback only applies to the production
+// build/Docker image running standalone — keeping the two defaults distinct
+// means `npm run dev` and `npm start` can run at the same time without a
+// port collision.
+const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+const HTTPS_PORT = process.env.HTTPS_PORT ? Number(process.env.HTTPS_PORT) : 4443;
 // Bind explicitly to all IPv4 interfaces. Node's default (no host given)
 // can end up IPv6-only ([::]) on some setups, which some browsers/embedded
 // browser views can't reach via "localhost" -> 127.0.0.1. Matches the same
 // fix applied to the Vite dev server in client/vite.config.ts.
 const HOST = '0.0.0.0';
+
+// TLS cert/key for HTTPS. Defaults to certs/{key,cert}.pem at the repo root
+// (see "Running over HTTPS" in README.md for how to generate one locally);
+// override with SSL_KEY_PATH / SSL_CERT_PATH for a real certificate in
+// production. Missing either file falls back to HTTP-only so local dev
+// keeps working without requiring a certificate.
+const SSL_KEY_PATH = process.env.SSL_KEY_PATH
+  ? path.resolve(process.env.SSL_KEY_PATH)
+  : path.resolve(__dirname, '../../certs/key.pem');
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH
+  ? path.resolve(process.env.SSL_CERT_PATH)
+  : path.resolve(__dirname, '../../certs/cert.pem');
 
 async function main() {
   await seedIfNeeded();
@@ -41,9 +62,50 @@ async function main() {
 
   app.use(errorHandler);
 
-  app.listen(PORT, HOST, () => {
-    console.log(`Server listening on http://localhost:${PORT}`);
-  });
+  // `npm run dev` sets DISABLE_HTTPS=true so the backend always stays plain
+  // HTTP in local dev, regardless of whether certs/ happens to exist — the
+  // Vite dev server proxies '/api' to plain http://localhost:PORT
+  // (client/vite.config.ts), and that proxy target would break if this port
+  // suddenly became redirect-only. HTTPS is for the production build/start
+  // (and the Docker image), not the dev server.
+  const httpsDisabled = process.env.DISABLE_HTTPS === 'true';
+  const hasCerts = !httpsDisabled && fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH);
+
+  if (hasCerts) {
+    const credentials = {
+      key: fs.readFileSync(SSL_KEY_PATH, 'utf-8'),
+      cert: fs.readFileSync(SSL_CERT_PATH, 'utf-8'),
+    };
+
+    // The app itself is only ever served over HTTPS...
+    https.createServer(credentials, app).listen(HTTPS_PORT, HOST, () => {
+      console.log(`HTTPS server listening on https://localhost:${HTTPS_PORT}`);
+    });
+
+    // ...and PORT stays open only to redirect stray HTTP requests to it, so
+    // the app is reachable on both ports without ever serving plaintext.
+    http
+      .createServer((req, res) => {
+        const host = (req.headers.host ?? `localhost:${PORT}`).split(':')[0];
+        res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url ?? ''}` });
+        res.end();
+      })
+      .listen(PORT, HOST, () => {
+        console.log(`HTTP server listening on http://localhost:${PORT} (redirects to HTTPS)`);
+      });
+  } else {
+    if (httpsDisabled) {
+      console.log(`HTTPS disabled (DISABLE_HTTPS=true, set by "npm run dev") — running HTTP only on port ${PORT}.`);
+    } else {
+      console.warn(
+        `No TLS certificate found at ${SSL_CERT_PATH} — running HTTP only on port ${PORT}. ` +
+          'See "Running over HTTPS" in README.md to generate a local certificate.',
+      );
+    }
+    app.listen(PORT, HOST, () => {
+      console.log(`HTTP server listening on http://localhost:${PORT}`);
+    });
+  }
 }
 
 main().catch((err) => {

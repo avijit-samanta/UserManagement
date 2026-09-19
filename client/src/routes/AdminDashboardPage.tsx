@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { DialogOverlay, DialogContent } from '@reach/dialog';
 import { AppShell } from '../components/layout/AppShell';
 import { Card } from '../components/common/Card';
+import { Button } from '../components/common/Button';
 import { UserList } from '../components/admin/UserList';
 import { UserProfileEditor } from '../components/admin/UserProfileEditor';
+import { AddUserForm } from '../components/admin/AddUserForm';
 import { TicketList } from '../components/tickets/TicketList';
 import { TicketDetail } from '../components/tickets/TicketDetail';
 import { usersApi } from '../api/users';
@@ -13,6 +15,7 @@ import type { PublicUser, Ticket } from '../types';
 function UserProfilesSection() {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selected, setSelected] = useState<PublicUser | null>(null);
+  const [adding, setAdding] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,7 +26,15 @@ function UserProfilesSection() {
   }, []);
 
   return (
-    <Card title="User Profiles" subtitle={`${users.length} accounts`}>
+    <Card
+      title="User Profiles"
+      subtitle={`${users.length} accounts`}
+      actions={
+        <Button type="button" onClick={() => setAdding(true)} data-testid="open-add-user-button">
+          + Add User
+        </Button>
+      }
+    >
       {loading ? (
         <div className="empty-state">Loading…</div>
       ) : (
@@ -41,6 +52,17 @@ function UserProfilesSection() {
               }}
             />
           )}
+        </DialogContent>
+      </DialogOverlay>
+
+      <DialogOverlay isOpen={adding} onDismiss={() => setAdding(false)} className="app-dialog-overlay">
+        <DialogContent className="app-dialog-content" aria-label="Add new user">
+          <AddUserForm
+            onCreated={(created) => {
+              setUsers((prev) => [...prev, created]);
+              setAdding(false);
+            }}
+          />
         </DialogContent>
       </DialogOverlay>
     </Card>
@@ -68,6 +90,13 @@ function QueryManagementSection() {
     await refresh();
   }
 
+  async function handleClose() {
+    if (!selected) return;
+    const { ticket } = await ticketsApi.close(selected.id);
+    setSelected(ticket);
+    await refresh();
+  }
+
   return (
     <Card title="All user queries" subtitle={`${tickets.length} total`}>
       {loading ? (
@@ -78,7 +107,9 @@ function QueryManagementSection() {
 
       <DialogOverlay isOpen={!!selected} onDismiss={() => setSelected(null)} className="app-dialog-overlay">
         <DialogContent className="app-dialog-content" aria-label="Ticket details">
-          {selected && <TicketDetail ticket={selected} canRespond onRespond={handleRespond} />}
+          {selected && (
+            <TicketDetail ticket={selected} canReply canClose onRespond={handleRespond} onClose={handleClose} />
+          )}
         </DialogContent>
       </DialogOverlay>
     </Card>

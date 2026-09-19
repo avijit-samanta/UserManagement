@@ -6,4 +6,6 @@ export const ticketsApi = {
   get: (id: string) => api.get<{ ticket: Ticket }>(`/tickets/${id}`),
   create: (title: string, description: string) => api.post<{ ticket: Ticket }>('/tickets', { title, description }),
   respond: (id: string, response: string) => api.put<{ ticket: Ticket }>(`/tickets/${id}/respond`, { response }),
+  close: (id: string) => api.put<{ ticket: Ticket }>(`/tickets/${id}/close`),
+  reopen: (id: string) => api.put<{ ticket: Ticket }>(`/tickets/${id}/reopen`),
 };

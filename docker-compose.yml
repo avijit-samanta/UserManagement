@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simplehelpdesk:local
+    ports:
+      # HOST_PORT:CONTAINER_PORT — change the left-hand side to expose the
+      # app on a different host port; the right-hand side must match PORT/
+      # HTTPS_PORT below and the Dockerfile's EXPOSE. See README.md
+      # "Configuring the port" and "Running over HTTPS".
+      - '8080:8080'   # plain HTTP — redirects to HTTPS once certs/ is mounted below
+      - '4443:4443'   # HTTPS — the actual app
+    environment:
+      PORT: '8080'
+      HTTPS_PORT: '4443'
+    volumes:
+      # Persists data/db.json (and its .tmp write-lock file) across
+      # container restarts/rebuilds. Without this, every recreated
+      # container reseeds the two demo accounts from scratch.
+      - simplehelpdesk-data:/app/data
+      # TLS cert/key (see README.md "Running over HTTPS" — generate with
+      # `npm run certs:generate` or drop in a real certificate). Read-only;
+      # missing this entirely just falls back to HTTP-only on PORT.
+      - ./certs:/app/certs:ro
+    restart: unless-stopped
+
+volumes:
+  simplehelpdesk-data:

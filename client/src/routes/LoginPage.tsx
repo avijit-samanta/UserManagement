@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { TextField } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { ApiError } from '../api/client';
+import { useTheme } from '../hooks/useTheme';
 
 export function LoginPage() {
   const { user, status, login } = useAuth();
   const navigate = useNavigate();
+  const { theme, toggle } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,11 +36,21 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <button
+          type="button"
+          className="auth-theme-toggle"
+          onClick={toggle}
+          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+          data-testid="login-theme-toggle"
+        >
+          {theme === 'light' ? '🌙' : '☀️'}
+        </button>
+
         <div className="auth-brand">
           <div className="auth-brand-mark" />
           <div>
-            <div className="auth-brand-title">NimbusDesk</div>
-            <div className="auth-brand-subtitle">User Management Portal</div>
+            <div className="auth-brand-title">Simple Help Desk</div>
+            <div className="auth-brand-subtitle">Support Ticket Portal</div>
           </div>
         </div>
 
@@ -78,10 +90,8 @@ export function LoginPage() {
           )}
         </form>
 
-        <div className="auth-hint">
-          Demo accounts — Admin: <strong>admin@example.com</strong> / Admin@123
-          <br />
-          User: <strong>user@example.com</strong> / User@123
+        <div className="auth-switch">
+          Don't have an account? <Link to="/register">Create one</Link>
         </div>
       </div>
     </div>

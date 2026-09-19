@@ -11,3 +11,10 @@ export function generateTicketId(existingCount: number): string {
   ticketCounter += 1;
   return `TCK-${String(ticketCounter).padStart(6, '0')}`;
 }
+
+let messageCounter = 0;
+
+export function generateMessageId(): string {
+  messageCounter += 1;
+  return `MSG-${Date.now()}-${messageCounter}`;
+}

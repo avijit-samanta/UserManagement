@@ -7,16 +7,31 @@ import type { Ticket } from '../../types';
 
 export function TicketDetail({
   ticket,
-  canRespond,
+  canReply,
+  canClose,
+  canReopen,
   onRespond,
+  onClose,
+  onReopen,
 }: {
   ticket: Ticket;
-  canRespond: boolean;
+  /** Can the current viewer send a new message right now? (still subject to the ticket not being closed) */
+  canReply: boolean;
+  /** Admin-only: show the "Close Ticket" action alongside the reply form. */
+  canClose?: boolean;
+  /** Ticket-owner-only: show "Reopen Ticket" once the ticket is closed. */
+  canReopen?: boolean;
   onRespond?: (response: string) => Promise<unknown>;
+  onClose?: () => Promise<unknown>;
+  onReopen?: () => Promise<unknown>;
 }) {
   const [response, setResponse] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isClosed = ticket.status === 'closed';
 
   async function handleRespond(e: React.FormEvent) {
     e.preventDefault();
@@ -30,6 +45,32 @@ export function TicketDetail({
       setError(err instanceof ApiError ? err.message : 'Failed to send response.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleClose() {
+    if (!onClose) return;
+    setClosing(true);
+    setError(null);
+    try {
+      await onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to close ticket.');
+    } finally {
+      setClosing(false);
+    }
+  }
+
+  async function handleReopen() {
+    if (!onReopen) return;
+    setReopening(true);
+    setError(null);
+    try {
+      await onReopen();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to reopen ticket.');
+    } finally {
+      setReopening(false);
     }
   }
 
@@ -60,21 +101,29 @@ export function TicketDetail({
         <p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.6 }}>{ticket.description}</p>
       </div>
 
-      {ticket.adminResponse ? (
-        <div className="response-block" data-testid="ticket-response-text">
-          <div className="form-label" style={{ marginBottom: 'var(--space-1)' }}>
-            Administrator response
-          </div>
-          <p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.6 }}>{ticket.adminResponse}</p>
+      <div style={{ marginTop: 'var(--space-4)' }} data-testid="ticket-messages">
+        <div className="form-label" style={{ marginBottom: 'var(--space-1)' }}>
+          Conversation
         </div>
-      ) : (
-        <div className="response-block-empty">Awaiting a response from the administrator.</div>
-      )}
+        {ticket.messages.length === 0 ? (
+          <div className="response-block-empty">No messages yet.</div>
+        ) : (
+          ticket.messages.map((message) => (
+            <div key={message.id} className={`message-item ${message.authorRole}`} data-testid="ticket-message">
+              <div className="message-meta">
+                <span>{message.authorName}</span>
+                <span>{new Date(message.createdAt).toLocaleString()}</span>
+              </div>
+              <p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.6 }}>{message.body}</p>
+            </div>
+          ))
+        )}
+      </div>
 
-      {canRespond && ticket.status === 'open' && (
+      {canReply && !isClosed && (
         <form onSubmit={handleRespond} style={{ marginTop: 'var(--space-5)' }}>
           <TextAreaField
-            label="Write a response"
+            label="Write a message"
             fullWidth
             value={response}
             onChange={(e) => setResponse(e.target.value)}
@@ -83,11 +132,31 @@ export function TicketDetail({
           />
           <div className="form-actions">
             <Button type="submit" disabled={submitting} data-testid="ticket-respond-button">
-              {submitting ? 'Sending…' : 'Send Response'}
+              {submitting ? 'Sending…' : 'Send Message'}
             </Button>
+            {canClose && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={closing}
+                onClick={handleClose}
+                data-testid="ticket-close-button"
+              >
+                {closing ? 'Closing…' : 'Close Ticket'}
+              </Button>
+            )}
             {error && <span className="form-message error">{error}</span>}
           </div>
         </form>
+      )}
+
+      {canReopen && isClosed && (
+        <div className="form-actions" style={{ marginTop: 'var(--space-5)' }}>
+          <Button type="button" disabled={reopening} onClick={handleReopen} data-testid="ticket-reopen-button">
+            {reopening ? 'Reopening…' : 'Reopen Ticket'}
+          </Button>
+          {error && <span className="form-message error">{error}</span>}
+        </div>
       )}
     </div>
   );

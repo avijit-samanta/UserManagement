@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 interface FieldWrapperProps {
   label: string;
@@ -27,6 +27,22 @@ export function TextAreaField({
     <div className={`form-field${fullWidth ? ' full-width' : ''}`}>
       <label className="form-label">{label}</label>
       <textarea className="form-textarea" {...rest} />
+    </div>
+  );
+}
+
+export function SelectField({
+  label,
+  fullWidth,
+  children,
+  ...rest
+}: FieldWrapperProps & SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
+  return (
+    <div className={`form-field${fullWidth ? ' full-width' : ''}`}>
+      <label className="form-label">{label}</label>
+      <select className="form-input" {...rest}>
+        {children}
+      </select>
     </div>
   );
 }

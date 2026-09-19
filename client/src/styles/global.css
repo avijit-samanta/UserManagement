@@ -58,6 +58,7 @@ a {
 }
 
 .auth-card {
+  position: relative;
   width: 100%;
   max-width: 400px;
   background: var(--color-surface);
@@ -65,6 +66,34 @@ a {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: var(--space-8) var(--space-6);
+}
+
+.auth-theme-toggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  appearance: none;
+}
+
+.auth-theme-toggle:hover {
+  border-color: var(--color-primary);
+}
+
+.auth-switch {
+  margin-top: var(--space-5);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
 
 .auth-brand {
@@ -102,17 +131,6 @@ a {
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   margin-bottom: var(--space-6);
-}
-
-.auth-hint {
-  margin-top: var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  line-height: 1.6;
 }
 
 .logout-page {
@@ -528,6 +546,11 @@ a {
   color: var(--color-success);
 }
 
+.status-badge.closed {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
 /* ---------- Reach UI: Dialog ---------- */
 
 .app-dialog-overlay[data-reach-dialog-overlay] {
@@ -569,20 +592,37 @@ a {
   color: var(--color-text-muted);
 }
 
-.response-block {
-  margin-top: var(--space-4);
-  padding: var(--space-4);
-  background: var(--color-surface-alt);
-  border-left: 3px solid var(--color-success);
-  border-radius: var(--radius-sm);
-}
-
 .response-block-empty {
-  margin-top: var(--space-4);
+  margin-top: var(--space-2);
   padding: var(--space-4);
   background: var(--color-surface-alt);
   border-left: 3px solid var(--color-warning);
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.message-item {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-alt);
+  border-left: 3px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.message-item.admin {
+  border-left-color: var(--color-success);
+}
+
+.message-item.user {
+  border-left-color: var(--color-info);
+}
+
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
 }

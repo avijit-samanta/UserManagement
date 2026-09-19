@@ -11,7 +11,16 @@ export interface PublicUser {
   updatedAt: string;
 }
 
-export type TicketStatus = 'open' | 'answered';
+export type TicketStatus = 'open' | 'answered' | 'closed';
+
+export interface TicketMessage {
+  id: string;
+  body: string;
+  authorId: string;
+  authorName: string;
+  authorRole: Role;
+  createdAt: string;
+}
 
 export interface Ticket {
   id: string;
@@ -20,8 +29,7 @@ export interface Ticket {
   submittedBy: string;
   submittedByName: string;
   status: TicketStatus;
-  adminResponse: string | null;
-  respondedBy: string | null;
+  messages: TicketMessage[];
   createdAt: string;
   updatedAt: string;
 }

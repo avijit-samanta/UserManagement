@@ -50,5 +50,41 @@
   "newTicket": {
     "title": "Automated QA check-in",
     "description": "Created by the Playwright data-driven suite to verify the submit-request flow."
+  },
+  "registration": [
+    {
+      "role": "admin",
+      "name": "QA New Admin",
+      "emailPrefix": "qa-new-admin",
+      "password": "NewAdmin@123",
+      "phone": "+1 (555) 010-1111",
+      "address": "1 Automation Blvd, QA City",
+      "loginSuccessTestId": "nav-user-profiles"
+    },
+    {
+      "role": "user",
+      "name": "QA New User",
+      "emailPrefix": "qa-new-user",
+      "password": "NewUser@123",
+      "phone": "+1 (555) 010-2222",
+      "address": "2 Automation Blvd, QA City",
+      "loginSuccessTestId": "nav-my-profile"
+    }
+  ],
+  "adminAddUser": {
+    "name": "QA Direct Add",
+    "password": "DirectAdd@123",
+    "phone": "+1 (555) 010-3333",
+    "address": "3 Automation Blvd, QA City",
+    "role": "user"
+  },
+  "ticketConversation": {
+    "title": "Automated QA conversation check-in",
+    "description": "Created by the Playwright suite to verify multi-message admin responses, closing, and reopening.",
+    "adminMessages": [
+      "Looking into this now.",
+      "Can you confirm the exact error you're seeing?"
+    ],
+    "userReply": "Sure - it says invalid credentials even though the password is correct."
   }
 }

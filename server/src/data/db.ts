@@ -2,7 +2,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { DbShape } from '../models/types';
 
-const DB_PATH = path.resolve(__dirname, '../../../data/db.json');
+// Overridable via DB_PATH so test runs / CI can point at a throwaway file
+// instead of the real data/db.json — this is a real user's data, never to
+// be deleted or overwritten by an automated test or verification run.
+const DB_PATH = process.env.DB_PATH
+  ? path.resolve(process.env.DB_PATH)
+  : path.resolve(__dirname, '../../../data/db.json');
 
 // Serializes writes to the JSON file within this process. Sufficient for a
 // single-process local-file store; a real database or a file-locking
