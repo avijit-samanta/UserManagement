@@ -97,6 +97,24 @@ Browsers will show a "not secure"/"not trusted" warning for a self-signed cert �
 - Use [`mkcert`](https://github.com/FiloSottile/mkcert) instead (`mkcert -install && mkcert -key-file certs/key.pem -cert-file certs/cert.pem localhost 127.0.0.1`) — it installs a local CA your browser already trusts.
 - Or drop in a real certificate (e.g. from Let's Encrypt) at the same two paths for an actual deployment.
 
+### Why a fresh clone (or fresh container image) has no HTTPS
+
+`certs/` is listed in both [`.gitignore`](.gitignore) and [`.dockerignore`](.dockerignore) on purpose — a private key should never be committed. The consequence is that **every fresh checkout starts with no `certs/` folder at all**, so the condition in the table above ("either cert file is missing") is always true until you generate one yourself. There's no error for this — the server just logs the console warning from the table above and quietly serves plain HTTP on `PORT`. If `https://localhost:4443` isn't loading, this is almost always why: run `npm run certs:generate` (see above) and restart.
+
+### Verifying a generated certificate
+
+After `npm run certs:generate`, you can inspect the two files directly with `openssl` before ever starting the server:
+
+```bash
+# Subject, validity window, and Subject Alternative Name (SAN)
+openssl x509 -in certs/cert.pem -noout -subject -dates -ext subjectAltName
+
+# Sanity-check the private key is well-formed
+openssl rsa -in certs/key.pem -noout -check
+```
+
+Expect `subject=CN=localhost`, a SAN of `DNS:localhost, IP Address:127.0.0.1`, a `notAfter` date about 825 days out, and `RSA key ok`. If either command errors, delete `certs/` and re-run `npm run certs:generate`.
+
 ### Running it and verifying both ports
 
 ```bash
@@ -105,15 +123,34 @@ npm run build
 npm start
 ```
 
+Look for these two lines in the startup log — they confirm which mode actually activated:
+
+```
+HTTPS server listening on https://localhost:4443
+HTTP server listening on http://localhost:8080 (redirects to HTTPS)
+```
+
+Then check both ports:
+
 ```bash
 # HTTPS — the real app (curl -k skips the self-signed-cert trust check)
 curl -k https://localhost:4443/api/auth/me
+curl -k https://localhost:4443/healthz
 
 # HTTP — should 301 redirect to the HTTPS URL above, not serve the app
 curl -i http://localhost:8080/api/auth/me
+
+# /healthz is the one path the HTTP port answers directly instead of
+# redirecting, so a plain health check never has to follow a 301
+curl http://localhost:8080/healthz
+
+# Follow the redirect end-to-end and confirm it lands on the HTTPS app
+curl -kL -o /dev/null -w "final=%{url_effective} status=%{http_code}\n" http://localhost:8080/
 ```
 
-Expect `curl -k https://localhost:4443/...` to return a normal API response (`401` if logged out, which is still a real response from the app — not a connection error), and `curl -i http://localhost:8080/...` to return `HTTP/1.1 301 Moved Permanently` with a `Location: https://.../...` header. If instead you see the app respond directly on port 8080, either `DISABLE_HTTPS` is set or no certificate was found — check the server's startup log line, which always states which mode it's running in.
+Expect `curl -k https://localhost:4443/...` to return a normal API response (`401` if logged out, which is still a real response from the app — not a connection error), `/healthz` on either port to return `{"status":"ok",...}`, and `curl -i http://localhost:8080/...` to return `HTTP/1.1 301 Moved Permanently` with a `Location: https://.../...` header. If instead you see the app respond directly on port 8080, either `DISABLE_HTTPS` is set or no certificate was found — check the server's startup log line, which always states which mode it's running in.
+
+When you're done testing, stop the server (`Ctrl+C`, or on Windows, `taskkill /F /IM node.exe` if it was started in the background).
 
 ## Containerization (Docker)
 
@@ -292,6 +329,7 @@ docker compose build --no-cache
 | Login works locally but fails in the container | Confirm you're hitting the container's mapped port, not a stale local dev server still running on `5173`/`4000` — the two are independent processes on different ports by design |
 | Port 8080 just redirects instead of serving the app | That's expected once a cert is mounted at `certs/` — see [Running over HTTPS](#running-over-https). Use the HTTPS port (`4443` by default), or remove the `./certs:/app/certs:ro` volume mount to go back to HTTP-only |
 | Browser shows a certificate warning | Expected for the self-signed cert from `npm run certs:generate` — accept it for local testing, or use `mkcert`/a real certificate instead (see [Running over HTTPS](#running-over-https)) |
+| `https://localhost:4443` doesn't load at all (locally or in the container), no TLS error, just refuses/falls back to HTTP | No certificate exists yet — `certs/` is gitignored/dockerignored, so it's missing on every fresh clone or fresh image by design. Run `npm run certs:generate` (mount the resulting `certs/` folder into the container) and restart — see [Why a fresh clone has no HTTPS](#why-a-fresh-clone-or-fresh-container-image-has-no-https) |
 
 ## CI/CD Pipeline
 
