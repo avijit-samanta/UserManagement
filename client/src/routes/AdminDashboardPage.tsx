@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { DialogOverlay, DialogContent } from '@reach/dialog';
 import { AppShell } from '../components/layout/AppShell';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { AppDialog } from '../components/common/AppDialog';
 import { UserList } from '../components/admin/UserList';
 import { UserProfileEditor } from '../components/admin/UserProfileEditor';
 import { AddUserForm } from '../components/admin/AddUserForm';
 import { TicketList } from '../components/tickets/TicketList';
 import { TicketDetail } from '../components/tickets/TicketDetail';
+import { FileRepository } from '../components/attachments/FileRepository';
 import { usersApi } from '../api/users';
 import { ticketsApi } from '../api/tickets';
 import type { PublicUser, Ticket } from '../types';
@@ -41,35 +42,31 @@ function UserProfilesSection() {
         <UserList users={users} onSelect={setSelected} />
       )}
 
-      <DialogOverlay isOpen={!!selected} onDismiss={() => setSelected(null)} className="app-dialog-overlay">
-        <DialogContent className="app-dialog-content" aria-label="Edit user profile">
-          {selected && (
-            <UserProfileEditor
-              user={selected}
-              onUpdated={(updated) => {
-                setSelected(updated);
-                setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-              }}
-            />
-          )}
-        </DialogContent>
-      </DialogOverlay>
-
-      <DialogOverlay isOpen={adding} onDismiss={() => setAdding(false)} className="app-dialog-overlay">
-        <DialogContent className="app-dialog-content" aria-label="Add new user">
-          <AddUserForm
-            onCreated={(created) => {
-              setUsers((prev) => [...prev, created]);
-              setAdding(false);
+      <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Edit user profile">
+        {selected && (
+          <UserProfileEditor
+            user={selected}
+            onUpdated={(updated) => {
+              setSelected(updated);
+              setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
             }}
           />
-        </DialogContent>
-      </DialogOverlay>
+        )}
+      </AppDialog>
+
+      <AppDialog isOpen={adding} onDismiss={() => setAdding(false)} ariaLabel="Add new user">
+        <AddUserForm
+          onCreated={(created) => {
+            setUsers((prev) => [...prev, created]);
+            setAdding(false);
+          }}
+        />
+      </AppDialog>
     </Card>
   );
 }
 
-function QueryManagementSection() {
+function QueryManagementSection({ onAttachmentUploaded }: { onAttachmentUploaded: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,18 +80,24 @@ function QueryManagementSection() {
     refresh().finally(() => setLoading(false));
   }, []);
 
-  async function handleRespond(response: string) {
+  async function handleRespond(response: string, files: File[]) {
     if (!selected) return;
-    const { ticket } = await ticketsApi.respond(selected.id, response);
+    const { ticket } = await ticketsApi.respond(selected.id, response, files);
     setSelected(ticket);
-    await refresh();
+    // See UserDashboardPage's identical comment: not awaited so the form
+    // re-enables as soon as the reply itself lands, without waiting on
+    // this second, unrelated list-refresh too.
+    refresh().catch((err) => console.error('Failed to refresh ticket list', err));
+    // Reach Tabs keeps the File Repository panel mounted, so it needs an
+    // explicit nudge to refetch whenever a reply here attaches a new file.
+    if (files.length > 0) onAttachmentUploaded();
   }
 
   async function handleClose() {
     if (!selected) return;
     const { ticket } = await ticketsApi.close(selected.id);
     setSelected(ticket);
-    await refresh();
+    refresh().catch((err) => console.error('Failed to refresh ticket list', err));
   }
 
   return (
@@ -105,23 +108,29 @@ function QueryManagementSection() {
         <TicketList tickets={tickets} onSelect={setSelected} showSubmitter />
       )}
 
-      <DialogOverlay isOpen={!!selected} onDismiss={() => setSelected(null)} className="app-dialog-overlay">
-        <DialogContent className="app-dialog-content" aria-label="Ticket details">
-          {selected && (
-            <TicketDetail ticket={selected} canReply canClose onRespond={handleRespond} onClose={handleClose} />
-          )}
-        </DialogContent>
-      </DialogOverlay>
+      <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Ticket details">
+        {selected && (
+          <TicketDetail ticket={selected} canReply canClose onRespond={handleRespond} onClose={handleClose} />
+        )}
+      </AppDialog>
     </Card>
   );
 }
 
 export function AdminDashboardPage() {
+  const [filesVersion, setFilesVersion] = useState(0);
+  const bumpFilesVersion = () => setFilesVersion((v) => v + 1);
+
   return (
     <AppShell
       sections={[
         { key: 'user-profiles', label: 'User Profiles', content: <UserProfilesSection /> },
-        { key: 'query-management', label: 'Query Management', content: <QueryManagementSection /> },
+        {
+          key: 'query-management',
+          label: 'Query Management',
+          content: <QueryManagementSection onAttachmentUploaded={bumpFilesVersion} />,
+        },
+        { key: 'file-repository', label: 'File Repository', content: <FileRepository key={filesVersion} /> },
       ]}
     />
   );

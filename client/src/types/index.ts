@@ -13,6 +13,20 @@ export interface PublicUser {
 
 export type TicketStatus = 'open' | 'answered' | 'closed';
 
+export interface Attachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  topic: string;
+  ticketId: string | null;
+  messageId: string | null;
+  uploadedBy: string;
+  uploadedByName: string;
+  uploadedByRole: Role;
+  createdAt: string;
+}
+
 export interface TicketMessage {
   id: string;
   body: string;
@@ -20,6 +34,7 @@ export interface TicketMessage {
   authorName: string;
   authorRole: Role;
   createdAt: string;
+  attachments?: Attachment[];
 }
 
 export interface Ticket {
@@ -32,4 +47,5 @@ export interface Ticket {
   messages: TicketMessage[];
   createdAt: string;
   updatedAt: string;
+  attachments?: Attachment[];
 }

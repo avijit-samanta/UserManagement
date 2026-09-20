@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StatusBadge } from './StatusBadge';
 import { TextAreaField } from '../common/Input';
 import { Button } from '../common/Button';
+import { AttachmentList } from '../attachments/AttachmentList';
 import { ApiError } from '../../api/client';
 import type { Ticket } from '../../types';
 
@@ -21,15 +22,17 @@ export function TicketDetail({
   canClose?: boolean;
   /** Ticket-owner-only: show "Reopen Ticket" once the ticket is closed. */
   canReopen?: boolean;
-  onRespond?: (response: string) => Promise<unknown>;
+  onRespond?: (response: string, files: File[]) => Promise<unknown>;
   onClose?: () => Promise<unknown>;
   onReopen?: () => Promise<unknown>;
 }) {
   const [response, setResponse] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [closing, setClosing] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isClosed = ticket.status === 'closed';
 
@@ -39,8 +42,10 @@ export function TicketDetail({
     setSubmitting(true);
     setError(null);
     try {
-      await onRespond(response);
+      await onRespond(response, files);
       setResponse('');
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send response.');
     } finally {
@@ -99,6 +104,7 @@ export function TicketDetail({
           Description
         </div>
         <p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.6 }}>{ticket.description}</p>
+        <AttachmentList attachments={ticket.attachments} />
       </div>
 
       <div style={{ marginTop: 'var(--space-4)' }} data-testid="ticket-messages">
@@ -115,6 +121,7 @@ export function TicketDetail({
                 <span>{new Date(message.createdAt).toLocaleString()}</span>
               </div>
               <p style={{ fontSize: 'var(--font-size-sm)', lineHeight: 1.6 }}>{message.body}</p>
+              <AttachmentList attachments={message.attachments} />
             </div>
           ))
         )}
@@ -130,6 +137,22 @@ export function TicketDetail({
             required
             data-testid="ticket-respond-textarea"
           />
+          <div className="form-field full-width" style={{ marginTop: 'var(--space-2)' }}>
+            <label className="form-label">Attach files (optional)</label>
+            <input
+              ref={fileInputRef}
+              className="form-input"
+              type="file"
+              multiple
+              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+              data-testid="ticket-respond-attach-input"
+            />
+            {files.length > 0 && (
+              <div className="form-hint" data-testid="ticket-respond-attach-selected">
+                {files.map((f) => f.name).join(', ')}
+              </div>
+            )}
+          </div>
           <div className="form-actions">
             <Button type="submit" disabled={submitting} data-testid="ticket-respond-button">
               {submitting ? 'Sending…' : 'Send Message'}

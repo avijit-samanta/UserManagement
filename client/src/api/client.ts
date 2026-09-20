@@ -7,12 +7,18 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // A FormData body (file uploads) must NOT get an explicit Content-Type —
+  // the browser sets one itself with the multipart boundary the server
+  // needs to parse it. Everything else keeps going through as JSON.
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`/api${path}`, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers: isFormData
+      ? { ...options.headers }
+      : {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
     ...options,
   });
 
@@ -34,10 +40,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+function toBody(data: unknown): BodyInit | undefined {
+  if (data instanceof FormData) return data;
+  return data !== undefined ? JSON.stringify(data) : undefined;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined }),
-  put: <T>(path: string, data?: unknown) =>
-    request<T>(path, { method: 'PUT', body: data !== undefined ? JSON.stringify(data) : undefined }),
+  post: <T>(path: string, data?: unknown) => request<T>(path, { method: 'POST', body: toBody(data) }),
+  put: <T>(path: string, data?: unknown) => request<T>(path, { method: 'PUT', body: toBody(data) }),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };

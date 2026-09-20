@@ -1,14 +1,49 @@
 import { Router } from 'express';
 import { ticketRepository } from '../data/repositories/ticketRepository';
+import { attachmentRepository } from '../data/repositories/attachmentRepository';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
+import { upload } from '../middleware/upload';
+import { uploadAttachments } from '../services/attachmentUpload';
 import { asyncHandler } from '../utils/asyncHandler';
+import { toPublicAttachment } from '../models/types';
+import type { Ticket } from '../models/types';
 
 const router = Router();
 
 router.use(requireAuth);
 
-router.post('/', asyncHandler(async (req, res) => {
+// Fills in the computed attachments fields (see models/types.ts) from a
+// caller-supplied list of that ticket's attachments — the ticket/message
+// objects in db.json never carry this themselves. Split from the DB read so
+// listing many tickets (below) can fetch every attachment once instead of
+// once per ticket.
+function enrichTicket(ticket: Ticket, attachments: ReturnType<typeof toPublicAttachment>[]): Ticket {
+  return {
+    ...ticket,
+    attachments: attachments.filter((a) => a.messageId === null),
+    messages: ticket.messages.map((message) => ({
+      ...message,
+      attachments: attachments.filter((a) => a.messageId === message.id),
+    })),
+  };
+}
+
+// Single-ticket version used by create / get-by-id / respond / close /
+// reopen, where a normal user's list is a rounding error compared to a
+// separate DB round trip per call anyway.
+async function withAttachments(ticket: Ticket): Promise<Ticket> {
+  const attachments = (await attachmentRepository.listForTicket(ticket.id)).map(toPublicAttachment);
+  return enrichTicket(ticket, attachments);
+}
+
+function extractFiles(req: { files?: unknown }): Express.Multer.File[] {
+  return (req.files as Express.Multer.File[] | undefined) ?? [];
+}
+
+router.post('/', upload.array('files', 5), asyncHandler(async (req, res) => {
+  const files = extractFiles(req);
+
   if (req.user!.role !== 'user') {
     res.status(403).json({ error: 'Only normal users can submit tickets' });
     return;
@@ -26,14 +61,39 @@ router.post('/', asyncHandler(async (req, res) => {
     submittedBy: req.user!.id,
     submittedByName: req.user!.name,
   });
-  res.status(201).json({ ticket });
+
+  if (files.length > 0) {
+    await uploadAttachments(files, {
+      topic: ticket.title,
+      ticketId: ticket.id,
+      messageId: null,
+      uploadedBy: req.user!,
+    });
+  }
+
+  res.status(201).json({ ticket: await withAttachments(ticket) });
 }));
 
+// The dashboard opens a ticket's details straight from this list response
+// (no separate GET /:id round trip on click — see TicketList/onSelect on
+// the client), so the list has to carry attachments too, not just the
+// detail endpoint. One listAll() covers every ticket instead of one DB read
+// per ticket.
 router.get('/', asyncHandler(async (req, res) => {
   const tickets = req.user!.role === 'admin'
     ? await ticketRepository.list()
     : await ticketRepository.listByUser(req.user!.id);
-  res.json({ tickets });
+
+  const allAttachments = (await attachmentRepository.listAll()).map(toPublicAttachment);
+  const byTicket = new Map<string, typeof allAttachments>();
+  for (const attachment of allAttachments) {
+    if (!attachment.ticketId) continue;
+    const bucket = byTicket.get(attachment.ticketId) ?? [];
+    bucket.push(attachment);
+    byTicket.set(attachment.ticketId, bucket);
+  }
+
+  res.json({ tickets: tickets.map((ticket) => enrichTicket(ticket, byTicket.get(ticket.id) ?? [])) });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
@@ -46,13 +106,14 @@ router.get('/:id', asyncHandler(async (req, res) => {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
-  res.json({ ticket });
+  res.json({ ticket: await withAttachments(ticket) });
 }));
 
 // Both the admin and the ticket's own submitter can append as many messages
 // as needed to the conversation, as long as it isn't closed. Anyone else
 // (a different normal user) is forbidden.
-router.put('/:id/respond', asyncHandler(async (req, res) => {
+router.put('/:id/respond', upload.array('files', 5), asyncHandler(async (req, res) => {
+  const files = extractFiles(req);
   const { response } = req.body ?? {};
   if (typeof response !== 'string' || !response.trim()) {
     res.status(400).json({ error: 'Response text is required' });
@@ -84,7 +145,22 @@ router.put('/:id/respond', asyncHandler(async (req, res) => {
     req.user!.name,
     req.user!.role,
   );
-  res.json({ ticket });
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' });
+    return;
+  }
+
+  if (files.length > 0) {
+    const newMessage = ticket.messages[ticket.messages.length - 1];
+    await uploadAttachments(files, {
+      topic: ticket.title,
+      ticketId: ticket.id,
+      messageId: newMessage.id,
+      uploadedBy: req.user!,
+    });
+  }
+
+  res.json({ ticket: await withAttachments(ticket) });
 }));
 
 router.put('/:id/close', requireRole('admin'), asyncHandler(async (req, res) => {
@@ -99,7 +175,7 @@ router.put('/:id/close', requireRole('admin'), asyncHandler(async (req, res) => 
   }
 
   const ticket = await ticketRepository.close(req.params.id);
-  res.json({ ticket });
+  res.json({ ticket: await withAttachments(ticket!) });
 }));
 
 // The submitter can reopen their own closed ticket, sending it back to the
@@ -120,7 +196,7 @@ router.put('/:id/reopen', asyncHandler(async (req, res) => {
   }
 
   const ticket = await ticketRepository.reopen(req.params.id);
-  res.json({ ticket });
+  res.json({ ticket: await withAttachments(ticket!) });
 }));
 
 export default router;

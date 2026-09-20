@@ -1,6 +1,6 @@
 # Simple Help Desk
 
-A help desk web app with separate administrator and normal-user experiences, built with React + TypeScript (Vite) on the frontend and Express + TypeScript on the backend. Data is stored in a local JSON file (`data/db.json`) behind a repository interface, so it can be swapped for a real database later without touching route code. Sessions use an HttpOnly cookie; app data is not stored in cookies.
+A help desk web app with separate administrator and normal-user experiences, built with React + TypeScript (Vite) on the frontend and Express + TypeScript on the backend. Data (users, tickets, messages, attachment metadata) is stored in Supabase Postgres, and uploaded files in Supabase Storage — both accessed behind a repository interface, so the backend can be swapped again later without touching route code (see [Connecting to Supabase](#connecting-to-supabase)). Sessions use an HttpOnly cookie; app data is not stored in cookies.
 
 **New here? Start with [docs/project-documentation.md](docs/project-documentation.md)** — requirements, testing strategy (including what's *not* covered), CI/CD, containerization, and everything worth understanding before making changes. This README is the day-to-day how-to; that document is the map.
 
@@ -10,14 +10,16 @@ A help desk web app with separate administrator and normal-user experiences, bui
 - **Normal user**: My Profile (name, email, phone, address — update & save), Submit New Request (title + description, creates a support ticket), My Tickets (status + a **two-way conversation thread** — reply to the administrator as many times as needed, not just read their response), and the ability to **reopen a closed ticket** if it needs more attention.
 - **Administrator**: User Profiles (view/edit any user, plus **add a new user directly** without them self-registering), Query Management (view all tickets, send multiple messages on the same ticket, and close a ticket once resolved).
 - **Ticket conversations are genuinely two-way**: the admin and the ticket's own submitter can both keep appending messages to the same thread (anyone else is forbidden). A message from the admin marks the ticket `answered`; a reply from the submitter — including on an already-`answered` ticket — puts it back to `open`, signaling it needs the admin's attention again.
+- **File attachments**, for both roles: attach one or more files (up to 5, 10MB each) when submitting a new ticket or sending any reply — they show up inline on the ticket, next to the message they were attached to. Files live in Supabase Storage; only metadata (name, size, uploader) is in Postgres.
+- **File Repository**, a dedicated section on both dashboards: every file a normal user has sent or received (their own uploads, plus any file — theirs or the admin's — attached to their own tickets), or every file in the system for an admin. Columns: file name (click to download), topic, uploaded by, **role** (its own column), uploaded at, size, and a delete action (the uploader or an admin). A standalone "Upload More" form adds a file with no ticket attached, just a topic.
 - Both roles log in and land on the same URL, `/dashboard`, which renders the right experience for the signed-in user's role. Role-based access is enforced on both the API and the frontend.
-- Accessible UI built with [Reach UI](https://reach.tech/): the section nav is a `Tabs` component, the header's user menu is a `Menu`, and ticket/profile details open in a focus-trapped `Dialog`.
+- Accessible UI built with [Reach UI](https://reach.tech/): the section nav is a `Tabs` component, the header's user menu is a `Menu`, and ticket/profile details open in a focus-trapped `Dialog` — every dialog has an explicit **✕ close button**, top-right, alongside the existing click-outside/Escape dismissal.
 - Logout and a dark/light theme toggle live in the header's user menu (post-login), **and on the login/register pages themselves** so the theme can be set before signing in.
 - A cohesive design-token system (`client/src/styles/tokens.css`) with light/dark mode.
 
 ## URLs at a glance — which one do I open?
 
-The app runs in three distinct contexts, each with its own port(s). They don't share state (separate `data/db.json` writes are the same file, but separate Node processes/sessions), and **dev and production can run at the same time** without conflicting — that's deliberate, not an accident.
+The app runs in three distinct contexts, each with its own port(s). They all point at the *same* Supabase project (there's no per-mode local data file anymore), and **dev and production can run at the same time** without conflicting — that's deliberate, not an accident.
 
 | URL | Mode | Started by | When to use it |
 |---|---|---|---|
@@ -45,7 +47,7 @@ The `--legacy-peer-deps` flag is needed because Reach UI's published peer depend
 
 This starts the Express API on `http://localhost:4000` and the Vite dev server on `http://localhost:5173` (which proxies `/api` requests to the API). Open `http://localhost:5173` — see [URLs at a glance](#urls-at-a-glance--which-one-do-i-open) above for how this relates to the production/HTTPS/QA URLs.
 
-On first run, `data/db.json` is seeded automatically with two accounts, used by the automated regression suite (see [QA Testing](#qa-testing-playwright) below) and useful for manual testing — **these are no longer shown on the login page**; register your own account via `/register`, or use these directly:
+The app needs a Supabase project connected before it can start — see [Connecting to Supabase](#connecting-to-supabase) below if you haven't set that up yet. Once it's running, on first launch the `users` table is seeded automatically with two accounts, used by the automated regression suite (see [QA Testing](#qa-testing-playwright) below) and useful for manual testing — **these are no longer shown on the login page**; register your own account via `/register`, or use these directly:
 
 | Role  | Email             | Password  |
 |-------|-------------------|-----------|
@@ -55,6 +57,53 @@ On first run, `data/db.json` is seeded automatically with two accounts, used by 
 ### Security note on open registration
 
 `/register` lets anyone create an **Administrator** account with no approval step — that's a deliberate simplification for this app's current scope, not a production-ready access-control model. Before deploying this publicly, consider gating admin signups behind an invite code, an allow-list of email domains, or removing the role choice from public registration entirely and promoting users to admin manually instead.
+
+## Connecting to Supabase
+
+The app's data — users, tickets, messages, and attachment metadata — lives in a Supabase Postgres project; uploaded files themselves live in Supabase Storage. There's no local JSON file or disk folder to persist anymore: restarting, rebuilding, or redeploying the app never touches your data at all, since none of it lives next to the code.
+
+### Credentials you need
+
+Copy [`.env.example`](.env.example) to `.env` (gitignored, at the repo root) and fill in three values, all from your Supabase project's dashboard:
+
+| Variable | Where to find it | Used for |
+|---|---|---|
+| `DATABASE_URL` | Project Settings → Database → Connection string (URI format) | Running `npm run db:migrate` only — creating/changing tables. Not needed just to run the app. |
+| `SUPABASE_URL` | Project Settings → API → Project URL | The app's runtime Postgres + Storage access |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → **Secret key** (older projects call this **service_role**) | Same as above — **not** the Publishable/anon key; this one bypasses Row Level Security and must never be sent to the browser |
+
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are read at server startup ([`server/src/index.ts`](server/src/index.ts) loads `.env` via `dotenv`) — set them the same way for `npm run dev`, `npm start`, and the Docker image (see [Step 3 — Environment variables](#step-3--environment-variables-supabase) below).
+
+### Why RLS is off
+
+Row Level Security is intentionally **not** enabled on any table (see the comment at the top of [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql)). The Express server — using the service_role key — is the only thing that ever queries Postgres; the browser never does. Every authorization rule (who can see a ticket, who can delete a file, admin-only routes) already lives in [`server/src/routes/*.ts`](server/src/routes), the same way it did when data lived in a JSON file. RLS is built around Supabase Auth's JWTs reaching Postgres directly from the browser, which doesn't apply to this app's custom session-cookie auth — turning it on would mean re-implementing the same checks a second time in SQL for no additional protection, since there's no untrusted direct-DB path to guard against.
+
+### Running a schema migration
+
+```bash
+npm run db:migrate
+```
+
+This runs [`scripts/db-migrate.js`](scripts/db-migrate.js), which applies every `.sql` file in [`supabase/migrations/`](supabase/migrations/) (in filename order) against `DATABASE_URL` directly — PostgREST/`supabase-js` (what the app uses at runtime) can't run `CREATE TABLE`/`ALTER TABLE`, so schema changes always go through this direct-Postgres path instead. Every statement in the existing migrations is idempotent (`IF NOT EXISTS` throughout) — safe to re-run.
+
+Run it once after connecting a fresh Supabase project, and again any time you add a new migration file.
+
+### The `test` schema (required for unit tests)
+
+The migrations create every table twice: once in `public` (real data) and once in a `test` schema (used only by [`server/src/data/repositories/*.test.ts`](server/src/data/repositories) — see [Unit Testing](#unit-testing-vitest) below), so the test suite can freely delete everything between runs without ever touching real data.
+
+PostgREST only exposes the `public` schema by default — a one-time dashboard setting is needed before the unit tests can reach `test` at all:
+
+**Project Settings → API → "Exposed schemas" → add `test`.**
+
+Without this, every repository test fails with `Invalid schema: test`.
+
+### Adding or editing data directly
+
+For a QA scenario that's faster to set up with SQL than by clicking through the UI, use the Supabase dashboard's **SQL Editor**, or connect with any Postgres client using `DATABASE_URL`. Two things to keep in mind:
+- **Users need a bcrypt `password_hash`**, not a plaintext password — generate one with `node -e "console.log(require('bcryptjs').hashSync('YourPassword123', 10))"` (run from `server/`, where `bcryptjs` is installed). It's usually faster to add a user via `/register` or the admin's "+ Add User" instead.
+- **Tickets don't need an `id`** — leave it out (or `NULL`) on insert; a trigger assigns the next `TCK-000001`-style id automatically (see `supabase/migrations/0002_ticket_id_and_message_uuid.sql`).
+- **Attachment rows need a real object already uploaded to the `attachments` Storage bucket** at the path in `storage_path` — a hand-inserted row with no matching object will show up in the File Repository but fail to download.
 
 ## Production build
 
@@ -161,8 +210,8 @@ The app ships as a single Docker image: one Node process serving both the built 
 | File | Purpose |
 |---|---|
 | [`Dockerfile`](Dockerfile) | Multi-stage build: install deps → build client+server → copy compiled output into a minimal runtime image |
-| [`.dockerignore`](.dockerignore) | Keeps `node_modules`, `dist/`, `data/db.json`, local certs, and other local/generated files out of the build context |
-| [`docker-compose.yml`](docker-compose.yml) | One-command build+run, with both port mappings, the data volume, and the certs bind mount already wired up |
+| [`.dockerignore`](.dockerignore) | Keeps `node_modules`, `dist/`, local certs, `.env`, and other local/generated files out of the build context |
+| [`docker-compose.yml`](docker-compose.yml) | One-command build+run, with both port mappings, the certs bind mount, and Supabase env vars (from `.env`) already wired up |
 
 ### Prerequisites
 
@@ -223,33 +272,17 @@ docker run -p 8080:8080 -p 8443:4443 -e PORT=8080 -e HTTPS_PORT=4443 \
 
 Without a mounted `certs/` folder at all, the container just serves plain HTTP on `PORT` — the `-p 8443:4443` mapping and `HTTPS_PORT` env var are harmless no-ops in that case since nothing listens on 4443 internally.
 
-### Step 3 — Data persistence (`data/db.json`)
+### Step 3 — Environment variables (Supabase)
 
-The app's JSON data store lives at `data/db.json`, resolved relative to the compiled server code to `/app/data/db.json` inside the container ([`server/src/data/db.ts:5`](server/src/data/db.ts#L5)). Containers are ephemeral by default — without a volume, every `docker compose down && docker compose up` (or any container recreation) wipes all users/tickets and reseeds the two demo accounts from scratch.
+The app's data lives in Supabase (see [Connecting to Supabase](#connecting-to-supabase) above), not inside the container — so there's no data volume to mount here at all. The container just needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set, exactly like running it locally.
 
-`docker-compose.yml` already mounts a named volume for this:
-
-```yaml
-volumes:
-  - simplehelpdesk-data:/app/data
-```
-
-To inspect or back up the underlying data without going through the app:
+`docker-compose.yml` already picks these up from a `.env` file at the repo root (`env_file`), the same one you created for local dev — nothing extra to configure if you've already followed [Connecting to Supabase](#connecting-to-supabase). Running with plain `docker run` instead of Compose, pass them explicitly:
 
 ```bash
-# copy the live db.json out of the running container
-docker compose cp app:/app/data/db.json ./db-backup.json
-
-# see where Docker stores the named volume on the host
-docker volume inspect simplehelpdesk_simplehelpdesk-data
+docker run -e SUPABASE_URL="$SUPABASE_URL" -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" ...
 ```
 
-If you'd rather use a plain host folder instead of a named volume (e.g. to edit `db.json` directly from the host), replace the volume line with a bind mount:
-
-```yaml
-volumes:
-  - ./data:/app/data
-```
+Since the container itself holds no data, recreating it (`docker compose down && docker compose up`, or any rebuild/redeploy) never loses anything — the same guarantee as any other stateless container talking to an external database.
 
 ### Step 4 — Run it
 
@@ -266,13 +299,12 @@ docker compose up --build
 
 Add `-d` to run in the background (`docker compose up --build -d`). With a certificate present, open `https://localhost:4443` (accept the self-signed-cert warning, or use a real cert / mkcert to avoid it); `http://localhost:8080` will just redirect there. Without a certificate, open `http://localhost:8080` directly.
 
-**Using plain Docker (no Compose, manual volume):**
+**Using plain Docker (no Compose):**
 
 ```bash
-docker volume create simplehelpdesk-data
 docker run --name simplehelpdesk -p 8080:8080 -p 4443:4443 \
   -e PORT=8080 -e HTTPS_PORT=4443 \
-  -v simplehelpdesk-data:/app/data \
+  -e SUPABASE_URL="$SUPABASE_URL" -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
   -v "$(pwd)/certs:/app/certs:ro" \
   simplehelpdesk:local
 ```
@@ -306,11 +338,8 @@ Then open the app in a browser (see Step 4 for which URL) and log in with the se
 ### Stopping, rebuilding, and cleaning up
 
 ```bash
-# stop the container(s), keep the data volume
+# stop the container(s) — nothing to lose, data lives in Supabase, not here
 docker compose down
-
-# stop and also delete the data volume (irreversible — wipes all users/tickets)
-docker compose down -v
 
 # rebuild the image after a code change (compose caches layers automatically)
 docker compose up --build
@@ -325,7 +354,7 @@ docker compose build --no-cache
 |---|---|
 | `docker build` fails on `npm ci` | `package-lock.json` out of sync with a `package.json` — run `npm install --legacy-peer-deps` locally first and commit the updated lockfile |
 | Container starts, but a port isn't reachable | Check the three-way `PORT`/`HTTPS_PORT`/`EXPOSE`/`ports` agreement in [Step 2](#step-2--configuring-the-ports); also confirm nothing else on the host already owns that port (`docker compose ps`, or `netstat -ano \| findstr <port>` on Windows) |
-| Data resets on every restart | The volume isn't mounted, or you ran `docker compose down -v` — check `docker-compose.yml`'s `volumes:` block and avoid `-v` on routine restarts |
+| Login/data looks reset or missing | Confirm `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are actually set in the container's environment (`docker compose exec app env \| grep SUPABASE`) — a missing/wrong key means the container is silently unable to reach your real Supabase project |
 | Login works locally but fails in the container | Confirm you're hitting the container's mapped port, not a stale local dev server still running on `5173`/`4000` — the two are independent processes on different ports by design |
 | Port 8080 just redirects instead of serving the app | That's expected once a cert is mounted at `certs/` — see [Running over HTTPS](#running-over-https). Use the HTTPS port (`4443` by default), or remove the `./certs:/app/certs:ro` volume mount to go back to HTTP-only |
 | Browser shows a certificate warning | Expected for the self-signed cert from `npm run certs:generate` — accept it for local testing, or use `mkcert`/a real certificate instead (see [Running over HTTPS](#running-over-https)) |
@@ -385,8 +414,12 @@ The `deploy-staging` and `deploy-production` jobs currently just `echo` what the
 
 Key seams:
 
-- `server/src/data/db.ts` — JSON file read/write with a write lock and atomic (temp-file + rename) writes.
-- `server/src/data/repositories/` — `userRepository` / `ticketRepository`, the interface boundary where a real database would slot in later.
+- `server/src/data/supabaseClient.ts` — the shared `@supabase/supabase-js` client every repository queries through.
+- `server/src/data/repositories/` — `userRepository` / `ticketRepository` / `attachmentRepository`, the interface boundary that let the backend swap from a local JSON file to Supabase without touching route code.
+- `server/src/services/attachmentUpload.ts` — uploads a file to Supabase Storage, then records its metadata row (in that order, so a failed upload never leaves an orphan row).
+- `server/src/routes/attachments.ts` — `GET /` (the File Repository listing, admin sees all, a user sees their own + their tickets'), `POST /` (standalone upload, requires a topic), `GET /:id/download`, `DELETE /:id` (uploader or admin only).
+- `server/src/data/storageBucket.ts` — the `attachments` Storage bucket name and its object-path scheme (`<ticketId or "standalone">/<attachmentId>-<fileName>`).
+- `server/src/middleware/upload.ts` — the shared `multer` memory-storage instance (10MB/file, 5 files/request) used by both `routes/attachments.ts` and `routes/tickets.ts`.
 - `server/src/models/types.ts` — a `Ticket` holds a `messages: TicketMessage[]` conversation thread (not a single response field) and a `status` of `open` | `answered` | `closed`.
 - `server/src/routes/tickets.ts` — `PUT /:id/respond` appends a message (admin **or** the ticket's own submitter, blocked once `closed`; a user's message flips status to `open`, an admin's to `answered`), `PUT /:id/close` (admin only), `PUT /:id/reopen` (ticket submitter only, only from `closed`).
 - `server/src/routes/auth.ts` — `POST /auth/register` is public self-registration (choosing `admin` or `user`); `server/src/routes/users.ts`'s `POST /users` is the admin-only "add user directly" equivalent.
@@ -400,11 +433,15 @@ Key seams:
 - `client/src/routes/RegisterPage.tsx` — public registration form at `/register`, linked from the login page.
 - `client/src/hooks/useTheme.ts` — the light/dark theme hook, shared by `AppShell` (post-login) and the login/register pages (pre-login).
 - `client/src/components/layout/AppShell.tsx` — the persistent header (user menu with theme toggle + logout) and the `Tabs`-based section nav, shared by both dashboards.
+- `client/src/components/common/AppDialog.tsx` — the shared Reach `Dialog` wrapper every modal in the app uses; adds the explicit ✕ close button once, in one place.
+- `client/src/components/attachments/FileRepository.tsx` — the File Repository table + "Upload More" form, rendered as its own nav section on both dashboards; visibility of which rows appear is entirely server-decided (`GET /api/attachments`).
+- `client/src/components/attachments/AttachmentList.tsx` — the read-only, download-only file list embedded inline on a ticket's description and each message.
+- `client/src/api/attachments.ts` — the attachments API wrapper, including `downloadUrl()` (a plain URL used as an `<a href>`, not a `fetch()` call).
 - `client/src/styles/tokens.css` — design tokens (colors, type scale, spacing, radius, shadow); `client/src/styles/global.css` also carries the style overrides for Reach UI's `Tabs`, `Menu`, and `Dialog` components.
 
 ## Unit Testing (Vitest)
 
-Server-side only, isolated from the real `data/db.json` — repository tests point `DB_PATH` at a throwaway temp file (see `server/src/data/db.ts`), never your real data.
+Server-side only, isolated from real data — repository tests run against a separate Postgres `test` schema in the same Supabase project (see [Connecting to Supabase → The `test` schema](#the-test-schema-required-for-unit-tests)), truncated between tests via [`server/src/data/repositories/testHelpers.ts`](server/src/data/repositories/testHelpers.ts), never your real `public` data. Requires `test` to be added under Project Settings → API → "Exposed schemas" first — every test fails with `Invalid schema: test` otherwise.
 
 ```bash
 npm run test:unit            # run once (used by CI)
@@ -412,22 +449,23 @@ npm run test:unit:watch      # re-run on every save
 npm run test:unit:coverage   # with a coverage report (server/coverage/, gitignored)
 ```
 
-**30 tests across 6 files** (`server/src/**/*.test.ts`, excluded from the production build via `server/tsconfig.json`'s `exclude`):
+**36 tests across 7 files** (`server/src/**/*.test.ts`, excluded from the production build via `server/tsconfig.json`'s `exclude`):
 
 | File | Tests | What it covers |
 |---|---|---|
 | `utils/password.test.ts` | 5 | Hashing produces a real bcrypt hash with a unique salt per call; verification accepts the right password, rejects a wrong or empty one. |
-| `utils/id.test.ts` | 6 | UUID shape/uniqueness; ticket ID formatting and monotonic increase (including catching up to a larger existing count); message ID uniqueness under rapid calls. |
+| `utils/id.test.ts` | 2 | UUID shape/uniqueness — the only ID still generated in application code (attachment IDs, pre-generated before a Storage upload; see [Connecting to Supabase](#connecting-to-supabase)). Ticket IDs and message IDs are now generated by Postgres itself (a trigger, and `gen_random_uuid()`, respectively). |
 | `middleware/requireAuth.test.ts` | 2 | `next()` when authenticated; `401` when not. |
 | `middleware/requireRole.test.ts` | 3 | `next()` for a matching role; `403` for the wrong role; `401` for no user. |
-| `data/repositories/userRepository.test.ts` | 5 | `create()`/`findByEmail()` (case-insensitive)/`update()` (partial-field, `undefined` for a missing user). |
+| `data/repositories/userRepository.test.ts` | 6 | `create()`/`findByEmail()` (case-insensitive)/`update()` (partial-field, `undefined` for a missing or malformed-uuid user). |
 | `data/repositories/ticketRepository.test.ts` | 9 | **The two-way conversation state machine**: an admin message → `answered`, a submitter message → `open` (even from `answered`), messages accumulate in order, plus `close()`/`reopen()` and `list()`/`listByUser()` ordering/filtering. |
+| `data/repositories/attachmentRepository.test.ts` | 9 | Create/find/delete a file record; `listForTicket()` scoping; `listVisibleToUser()`'s full visibility matrix (own uploads, an admin's file on your own ticket, excluding everyone else's) — the same rule the File Repository UI depends on. |
 
 Add a new test by dropping a `*.test.ts` file next to the code it tests — Vitest picks up anything matching `src/**/*.test.ts` (see `server/vitest.config.ts`) with no registration step needed.
 
 ## QA Testing (Playwright)
 
-Interactive elements carry stable `data-testid` attributes — login/register form fields, the login/register theme toggle, profile form fields/save button, ticket form fields/submit, the ticket respond textarea/button, the close/reopen ticket buttons, individual conversation messages (`ticket-message`), the "Add User" dialog fields, ticket and user table rows, section nav tabs (`nav-my-profile`, `nav-new-request`, `nav-my-tickets`, `nav-user-profiles`, `nav-query-management`), the header user menu button, the theme-toggle menu item, and the logout menu item — used by the Playwright E2E suite below. `playwright.config.ts` boots the app itself (`npm run dev`, reusing an already-running dev server outside CI) and points tests at `http://localhost:5173` — the same dev URL from [URLs at a glance](#urls-at-a-glance--which-one-do-i-open), not a separate QA-only environment.
+Interactive elements carry stable `data-testid` attributes — login/register form fields, the login/register theme toggle, profile form fields/save button, ticket form fields/submit, file-attach inputs on both the new-ticket form and the reply form, the ticket respond textarea/button, the close/reopen ticket buttons, individual conversation messages (`ticket-message`) and their attachments (`attachment-download-link`), the "Add User" dialog fields, every dialog's close button (`dialog-close-button`), the File Repository's topic/file inputs, upload button, table rows (`file-repo-row-<id>`) and per-row delete button, ticket and user table rows, section nav tabs (`nav-my-profile`, `nav-new-request`, `nav-my-tickets`, `nav-user-profiles`, `nav-query-management`, `nav-file-repository`), the header user menu button, the theme-toggle menu item, and the logout menu item — used by the Playwright E2E suite below. `playwright.config.ts` boots the app itself (`npm run dev`, reusing an already-running dev server outside CI) and points tests at `http://localhost:5173` — the same dev URL from [URLs at a glance](#urls-at-a-glance--which-one-do-i-open), not a separate QA-only environment.
 
 For the full narrative write-up (objectives, scope, reflection, and a real bug this suite caught) see **[docs/qa-testing.md](docs/qa-testing.md)**. This section is the practical how-to: how the test cases are implemented, how to update test data, how to run everything, and how to read the results.
 
@@ -442,10 +480,11 @@ e2e/
   auth.setup.ts            # logs in once per role, saves storageState
   role-based-access.spec.ts   # nav visibility + API authorization, per role
   profile-update.spec.ts       # user profile save → persists after reload
-  ticket-submission.spec.ts    # user submits a ticket → appears under My Tickets
+  ticket-submission.spec.ts    # user submits a ticket → appears under My Tickets; ticket dialog has a close button
   registration.spec.ts         # self-registration, both roles + duplicate-email rejection
   admin-add-user.spec.ts       # admin creates a user directly (not self-registered)
   ticket-conversation.spec.ts  # two-way multi-message thread, close, and reopen, admin + user together
+  file-attachments.spec.ts     # attach files to a ticket/reply, the File Repository, standalone uploads, cross-user isolation
   .auth/                   # generated storageState JSON files (gitignored)
 ```
 
@@ -454,15 +493,20 @@ e2e/
 | # | Spec file | Role | What it implements |
 |---|---|---|---|
 | 1–2 | `auth.setup.ts` | both | Fills the real login form, waits for a role-specific element to confirm the dashboard loaded, then calls `page.context().storageState({ path })` to save cookies to `e2e/.auth/<role>.json`. Runs once per role no matter how many other spec files exist. |
-| 3, 5 | `role-based-access.spec.ts` | both | `test.use({ storageState })` reuses the saved session; asserts every `expectedVisibleNavTestIds` entry is visible and every `expectedAbsentNavTestIds` entry has `toHaveCount(0)` (not just hidden — genuinely absent from the DOM). |
+| 3, 5 | `role-based-access.spec.ts` | both | `test.use({ storageState })` reuses the saved session; asserts every `expectedVisibleNavTestIds` entry is visible and every `expectedAbsentNavTestIds` entry has `toHaveCount(0)` (not just hidden — genuinely absent from the DOM). `expectedVisibleNavTestIds` includes `nav-file-repository` for both roles. |
 | 4, 6 | `role-based-access.spec.ts` | both | For each entry in that role's `apiChecks`, calls `page.request.get(endpoint)` directly and asserts the HTTP status — proves the restriction is enforced server-side, not just hidden in the UI. |
 | 7 | `profile-update.spec.ts` | user | Fills the profile form from `data.profileUpdate.user`, saves, **reloads the page**, and re-reads the form fields — proves the save persisted to the server, not just local component state. |
 | 8 | `ticket-submission.spec.ts` | user | Submits a ticket built from `data.newTicket` (title suffixed with a timestamp so repeat runs don't collide), switches to My Tickets, and asserts the new row is visible with status `open`. |
-| 9–10 | `registration.spec.ts` | both | Loops over `data.registration` (one entry per role): fills the `/register` form with a timestamp-unique email, submits, and asserts the role-appropriate dashboard element is visible — proves self-registration logs the new account straight in. |
-| 11 | `registration.spec.ts` | — | Attempts to register with the seeded admin's email; asserts `register-error` is shown — proves the server's duplicate-email `409` surfaces as a visible UI error, not a silent failure. |
-| 12 | `admin-add-user.spec.ts` | admin | Opens the "Add User" dialog from User Profiles, submits a new account with a timestamp-unique email, and asserts a table row for that email appears — proves an admin-created account doesn't require the new user to self-register. |
-| 13 | `ticket-conversation.spec.ts` | user + admin | One test, two browser contexts: the user submits a ticket; a second context logs in as admin and sends every message in `data.ticketConversation.adminMessages` (status → `answered`); back on the user's own context, the submitter replies with `data.ticketConversation.userReply` (asserting it renders as its own `ticket-message` and status flips back to `open`, and that the user's view has no close button); the admin then closes it — asserting the respond form disappears once closed, proving the "no responding to a closed ticket" rule holds in the UI, not just the API. |
-| 14 | `ticket-conversation.spec.ts` (same test, continued) | user | Back in the original context, reopens the now-closed ticket and asserts its status returns to `open` — proving only the submitter's reopen action, not a page reload, is what changes it. |
+| 9 | `ticket-submission.spec.ts` | user | Opens a ticket's details dialog and asserts `dialog-close-button` is visible and, when clicked, actually dismisses the dialog (`toHaveCount(0)`) — covers the explicit ✕ close button on every `AppDialog` in the app, not just click-outside/Escape. |
+| 10–11 | `registration.spec.ts` | both | Loops over `data.registration` (one entry per role): fills the `/register` form with a timestamp-unique email, submits, and asserts the role-appropriate dashboard element is visible — proves self-registration logs the new account straight in. |
+| 12 | `registration.spec.ts` | — | Attempts to register with the seeded admin's email; asserts `register-error` is shown — proves the server's duplicate-email `409` surfaces as a visible UI error, not a silent failure. |
+| 13 | `admin-add-user.spec.ts` | admin | Opens the "Add User" dialog from User Profiles, submits a new account with a timestamp-unique email, and asserts a table row for that email appears — proves an admin-created account doesn't require the new user to self-register. |
+| 14 | `ticket-conversation.spec.ts` | user + admin | One test, two browser contexts: the user submits a ticket; a second context logs in as admin and sends every message in `data.ticketConversation.adminMessages` (status → `answered`); back on the user's own context, the submitter replies with `data.ticketConversation.userReply` (asserting it renders as its own `ticket-message` and status flips back to `open`, and that the user's view has no close button); the admin then closes it — asserting the respond form disappears once closed, proving the "no responding to a closed ticket" rule holds in the UI, not just the API. |
+| 15 | `ticket-conversation.spec.ts` (same test, continued) | user | Back in the original context, reopens the now-closed ticket and asserts its status returns to `open` — proving only the submitter's reopen action, not a page reload, is what changes it. |
+| 16 | `file-attachments.spec.ts` | user | Attaches a file when submitting a new ticket; asserts it's downloadable inline on the ticket **and** shows up in the File Repository table with the ticket's title as its auto-filled Topic. |
+| 17 | `file-attachments.spec.ts` | user + admin | Admin attaches a file to a *reply* (not the initial ticket); asserts it renders under that specific message (not the ticket-level attachment list) on both the admin's and the submitter's view, and appears in the File Repository attributed to the admin. |
+| 18 | `file-attachments.spec.ts` | user | Uploads directly into the File Repository via "Upload More": asserts the client's `required` topic field actually blocks submission with no topic (no row appears), then that a valid upload appears immediately and the uploader can delete their own file. |
+| 19 | `file-attachments.spec.ts` | user + admin | Admin uploads a repository-only file with no connection to a given user's tickets; asserts that file never appears in that user's File Repository — the cross-user isolation the File Repository's visibility rule depends on. |
 
 Every test file above generates its cases by looping over `test-data.json` (`for (const role of data.roles)`, or `data.registration`) rather than naming roles individually — the table is the current output of that loop, not a hand-maintained list.
 
@@ -503,7 +547,7 @@ npx playwright test --headed
 npx playwright test --debug
 ```
 
-Execution is always in this order: the `setup` project's two tests run first (login as each role in `test-data.json`, one `storageState` write each), then every browser project's tests run — each `describe` block picks up its role's saved state via `test.use({ storageState })` and never touches the login form again. On a clean checkout, `data/db.json` doesn't exist yet — the server seeds it with the two demo accounts referenced by `test-data.json` on first boot, so no manual setup is needed before running the suite.
+Execution is always in this order: the `setup` project's two tests run first (login as each role in `test-data.json`, one `storageState` write each), then every browser project's tests run — each `describe` block picks up its role's saved state via `test.use({ storageState })` and never touches the login form again. On a fresh Supabase project (empty `users` table), the server seeds the two demo accounts referenced by `test-data.json` on first boot, so no manual setup is needed before running the suite.
 
 ### Multi-browser execution
 
@@ -532,7 +576,7 @@ To add a third browser (e.g. WebKit/Safari engine), add another project to `play
 
 ### Regression testing policy & impact matrix
 
-**Policy: all 14 test cases above must pass before merging to `main`.** This isn't advisory — [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)'s `regression-tests` job runs the entire suite (`npx playwright test --project=chromium`) on every push/PR, and `build-and-push-image` (and everything downstream of it — staging, then production) only runs if that job succeeded. There's no partial-pass or "skip the flaky one" path in this pipeline; a failing test blocks the deploy, full stop.
+**Policy: all 19 test cases above must pass before merging to `main`.** This isn't advisory — [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)'s `regression-tests` job runs the entire suite (`npx playwright test --project=chromium`) on every push/PR, and `build-and-push-image` (and everything downstream of it — staging, then production) only runs if that job succeeded. There's no partial-pass or "skip the flaky one" path in this pipeline; a failing test blocks the deploy, full stop.
 
 The suite doesn't try to guess which tests are "relevant" to a given change — it always runs all of it. The table below exists so a human (reviewing a PR, or deciding whether a change needs a *new* test) knows which existing cases are the ones actually exercising the area being touched, and — this is the part CI can't tell you — **whether a new test needs to be added in the same PR**, since a passing suite that never exercised the new behavior isn't actually evidence of anything.
 
@@ -544,7 +588,9 @@ The suite doesn't try to guess which tests are "relevant" to a given change — 
 | Profile update | `server/src/routes/profile.ts`, `ProfileForm.tsx` | 7 | Adding a new profile field. |
 | Admin creating a user directly | `server/src/routes/users.ts`'s `POST /users`, `AddUserForm.tsx` | 12 | Changing what fields are required, or who's allowed to create which role. |
 | Ticket submission | `server/src/routes/tickets.ts`'s `POST /`, `TicketForm.tsx` | 8 | Adding new ticket fields. |
-| Ticket conversation, close, reopen | `server/src/routes/tickets.ts`'s `/respond` `/close` `/reopen`, `server/src/data/repositories/ticketRepository.ts`'s `addMessage`, `server/src/models/types.ts`'s `Ticket`/`TicketMessage`, `TicketDetail.tsx` | 13, 14 | Changing the status state machine (currently: an admin message → `answered`, a submitter message → `open`, `open`/`answered` → `closed` → `open` via reopen), or changing who's allowed to post (currently: admin, or the ticket's own submitter — anyone else is `403`). |
+| Ticket conversation, close, reopen | `server/src/routes/tickets.ts`'s `/respond` `/close` `/reopen`, `server/src/data/repositories/ticketRepository.ts`'s `addMessage`, `server/src/models/types.ts`'s `Ticket`/`TicketMessage`, `TicketDetail.tsx` | 14, 15 | Changing the status state machine (currently: an admin message → `answered`, a submitter message → `open`, `open`/`answered` → `closed` → `open` via reopen), or changing who's allowed to post (currently: admin, or the ticket's own submitter — anyone else is `403`). |
+| File attachments & File Repository | `server/src/routes/attachments.ts`, `server/src/routes/tickets.ts` (file handling on create/respond), `server/src/services/attachmentUpload.ts`, `server/src/data/repositories/attachmentRepository.ts`, `FileRepository.tsx`, `AttachmentList.tsx`, `TicketForm.tsx`/`TicketDetail.tsx`'s file inputs | 16, 17, 18, 19 | Changing who can see a file (the `listVisibleToUser` rule), the 10MB/5-file limits (`server/src/middleware/upload.ts`), or moving off Supabase Storage. |
+| Dialog close button | `client/src/components/common/AppDialog.tsx` (shared by every dialog in the app) | 9 | Adding a new dialog that bypasses `AppDialog` instead of using it — every modal should go through the shared component so this one test keeps covering all of them. |
 | Any `data-testid` rename | Whichever component | Whichever spec references that testid — a stale testid fails loudly, it doesn't silently pass | Never skip updating the spec in the same PR; a rename that "still passes" usually means the assertion silently stopped running. |
 
 **In short:** touching one of the "files most likely touched" columns above means you should be able to point at the listed case(s) and say "yes, this still covers it" — and if the behavior you're adding isn't described by any existing case, that's the signal a new one belongs in this PR, following the pattern in [Updating test data](#updating-test-data).
@@ -596,7 +642,7 @@ How to analyze a failure, in order:
 
 1. Read the assertion error first — Playwright prints the locator used, the expected condition (e.g. `toBeVisible()`), and how long it waited before giving up.
 2. Open the trace for that test and step backward from the failing action to see what the page actually looked like and what API calls had (or hadn't) completed by then.
-3. Check whether the failure is a genuine regression (the app changed behavior) or a data problem (e.g. `test-data.json` still references a demo account that no longer exists in `data/db.json` — delete `data/db.json` to force a reseed, or update the JSON to match).
+3. Check whether the failure is a genuine regression (the app changed behavior) or a data problem (e.g. `test-data.json` still references a demo account that no longer exists in the Supabase `users` table — check the table in the Supabase dashboard, or update the JSON to match).
 4. If a test is flaky rather than reliably failing, re-run just that test with `--headed` to watch it live before deciding it needs a longer wait/assertion rather than a code fix.
 
 `npx playwright show-report` (equivalent to `npm run test:e2e:report`) can also be pointed at a specific report folder if you keep multiple runs around, e.g. `npx playwright show-report path/to/report`.

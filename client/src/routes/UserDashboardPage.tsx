@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { DialogOverlay, DialogContent } from '@reach/dialog';
 import { AppShell } from '../components/layout/AppShell';
 import { Card } from '../components/common/Card';
+import { AppDialog } from '../components/common/AppDialog';
 import { ProfileForm } from '../components/profile/ProfileForm';
 import { TicketForm } from '../components/tickets/TicketForm';
 import { TicketList } from '../components/tickets/TicketList';
 import { TicketDetail } from '../components/tickets/TicketDetail';
+import { FileRepository } from '../components/attachments/FileRepository';
 import { useAuth } from '../auth/AuthContext';
 import { profileApi } from '../api/profile';
 import { ticketsApi } from '../api/tickets';
 import type { Ticket } from '../types';
 
-function MyTicketsSection() {
+function MyTicketsSection({ onAttachmentUploaded }: { onAttachmentUploaded: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,18 +26,28 @@ function MyTicketsSection() {
     refresh().finally(() => setLoading(false));
   }, []);
 
-  async function handleRespond(response: string) {
+  async function handleRespond(response: string, files: File[]) {
     if (!selected) return;
-    const { ticket } = await ticketsApi.respond(selected.id, response);
+    const { ticket } = await ticketsApi.respond(selected.id, response, files);
     setSelected(ticket);
-    await refresh();
+    // Not awaited: the dialog already has everything it needs from
+    // `ticket` above — this just keeps the row behind it (status/updated
+    // time) current. Awaiting it here would keep TicketDetail's form
+    // disabled ("Sending…") until this second, unrelated request also
+    // finishes — unnoticeable against the old near-instant local JSON
+    // file, but a real, visible delay against a remote database.
+    refresh().catch((err) => console.error('Failed to refresh ticket list', err));
+    // Same "Reach Tabs keeps every panel mounted" issue as ticketsVersion
+    // below, but for the File Repository tab: a reply can carry a new
+    // attachment, so it needs to know to refetch too.
+    if (files.length > 0) onAttachmentUploaded();
   }
 
   async function handleReopen() {
     if (!selected) return;
     const { ticket } = await ticketsApi.reopen(selected.id);
     setSelected(ticket);
-    await refresh();
+    refresh().catch((err) => console.error('Failed to refresh ticket list', err));
   }
 
   return (
@@ -47,13 +58,11 @@ function MyTicketsSection() {
         <TicketList tickets={tickets} onSelect={setSelected} />
       )}
 
-      <DialogOverlay isOpen={!!selected} onDismiss={() => setSelected(null)} className="app-dialog-overlay">
-        <DialogContent className="app-dialog-content" aria-label="Ticket details">
-          {selected && (
-            <TicketDetail ticket={selected} canReply canReopen onRespond={handleRespond} onReopen={handleReopen} />
-          )}
-        </DialogContent>
-      </DialogOverlay>
+      <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Ticket details">
+        {selected && (
+          <TicketDetail ticket={selected} canReply canReopen onRespond={handleRespond} onReopen={handleReopen} />
+        )}
+      </AppDialog>
     </Card>
   );
 }
@@ -65,6 +74,10 @@ export function UserDashboardPage() {
   // Request" unless we force it to remount and refetch. Bumping this key
   // after a successful submission does that.
   const [ticketsVersion, setTicketsVersion] = useState(0);
+  // Same remount trick, for the File Repository tab: it needs to refetch
+  // whenever a new ticket or reply attaches a file, not just on first load.
+  const [filesVersion, setFilesVersion] = useState(0);
+  const bumpFilesVersion = () => setFilesVersion((v) => v + 1);
 
   if (!user) return null;
 
@@ -93,9 +106,10 @@ export function UserDashboardPage() {
           content: (
             <Card title="Submit New Request" subtitle="Send a question or issue to the administrator.">
               <TicketForm
-                onSubmit={async (title, description) => {
-                  await ticketsApi.create(title, description);
+                onSubmit={async (title, description, files) => {
+                  await ticketsApi.create(title, description, files);
                   setTicketsVersion((v) => v + 1);
+                  if (files.length > 0) bumpFilesVersion();
                 }}
               />
             </Card>
@@ -104,7 +118,12 @@ export function UserDashboardPage() {
         {
           key: 'my-tickets',
           label: 'My Tickets',
-          content: <MyTicketsSection key={ticketsVersion} />,
+          content: <MyTicketsSection key={ticketsVersion} onAttachmentUploaded={bumpFilesVersion} />,
+        },
+        {
+          key: 'file-repository',
+          label: 'File Repository',
+          content: <FileRepository key={filesVersion} />,
         },
       ]}
     />

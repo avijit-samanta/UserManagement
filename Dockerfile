@@ -32,11 +32,6 @@ RUN npm prune --omit=dev --legacy-peer-deps
 COPY --from=build /app/server/dist ./server/dist
 COPY --from=build /app/client/dist ./client/dist
 
-# server/src/data/db.ts resolves its JSON store to <repo root>/data/db.json
-# (three levels up from server/dist/data/db.js) — create it and hand
-# ownership to the non-root user below so writes succeed once mounted over.
-RUN mkdir -p /app/data
-
 # Run as a non-root user (default node:20-alpine ships a "node" user/group).
 RUN chown -R node:node /app
 USER node

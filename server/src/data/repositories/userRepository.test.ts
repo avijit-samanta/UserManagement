@@ -1,30 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { userRepository } from './userRepository';
+import { truncateTestTables } from './testHelpers';
 
-// db.ts reads DB_PATH from process.env at module-load time, so it must be
-// set BEFORE that module (or anything importing it) is loaded. A dynamic
-// import after setting the env var — rather than a static top-level import
-// — is what makes that ordering guaranteed. Vitest isolates module state
-// per test file by default, so this doesn't leak into other test files.
-const TEST_DB_PATH = path.join(os.tmpdir(), `helpdesk-test-users-${process.pid}-${Date.now()}.json`);
-process.env.DB_PATH = TEST_DB_PATH;
-
-let userRepository: typeof import('./userRepository').userRepository;
-let writeDb: typeof import('../db').writeDb;
-
-beforeAll(async () => {
-  ({ userRepository } = await import('./userRepository'));
-  ({ writeDb } = await import('../db'));
-});
-
+// See src/test-setup.ts: SUPABASE_SCHEMA is set to "test" for the whole
+// suite, so these run against an isolated copy of the real tables.
 beforeEach(async () => {
-  await writeDb({ users: [], tickets: [] });
-});
-
-afterAll(async () => {
-  await fs.rm(TEST_DB_PATH, { force: true });
+  await truncateTestTables();
 });
 
 describe('userRepository.create', () => {
@@ -87,7 +68,14 @@ describe('userRepository.update', () => {
   });
 
   it('returns undefined when the user does not exist', async () => {
-    const updated = await userRepository.update('nonexistent-id', { name: 'X' });
+    // A syntactically-valid-but-unused uuid, not an arbitrary string — see
+    // pgErrors.ts: a malformed uuid is guarded separately (below).
+    const updated = await userRepository.update('00000000-0000-0000-0000-000000000000', { name: 'X' });
+    expect(updated).toBeUndefined();
+  });
+
+  it('returns undefined (not a Postgres error) for a malformed id', async () => {
+    const updated = await userRepository.update('not-a-uuid', { name: 'X' });
     expect(updated).toBeUndefined();
   });
 });

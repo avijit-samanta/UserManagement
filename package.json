@@ -11,6 +11,7 @@
     "build": "npm run build -w client && npm run build -w server",
     "start": "npm run start -w server",
     "certs:generate": "bash scripts/generate-certs.sh",
+    "db:migrate": "node scripts/db-migrate.js",
     "test:unit": "npm run test -w server",
     "test:unit:watch": "npm run test:watch -w server",
     "test:unit:coverage": "npm run test:coverage -w server",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "concurrently": "^9.1.0",
-    "cross-env": "^10.1.0"
+    "cross-env": "^10.1.0",
+    "pg": "^8.23.0"
   }
 }

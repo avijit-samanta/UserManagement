@@ -6,6 +6,14 @@ name: CI/CD
 # gates the next — a failure anywhere stops the pipeline before it reaches
 # deployment. Unit tests run in parallel with build-and-typecheck (both are
 # fast) so the slower Playwright suite only starts once both have passed.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions),
+# needed since the app's data now lives in Supabase (see README's
+# "Connecting to Supabase"), not a local JSON file:
+#   SUPABASE_URL               — Project Settings -> API
+#   SUPABASE_SERVICE_ROLE_KEY  — same page, the "Secret key" (not Publishable)
+# Both unit-tests (queries the `test` schema) and regression-tests (the e2e
+# suite's `npm run dev` webServer, against `public`) need them.
 on:
   push:
     branches: [main]
@@ -41,6 +49,9 @@ jobs:
           cache: npm
       - run: npm ci --legacy-peer-deps
       - name: Run server unit tests with coverage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run test:unit:coverage
       - name: Upload coverage report
         if: always()
@@ -67,6 +78,9 @@ jobs:
       # need edge-specific coverage — see README.md "Multi-browser execution".
       - run: npx playwright install --with-deps chromium
       - name: Run the full Playwright suite (this is the merge/deploy gate)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test --project=chromium
       - name: Upload Playwright report
         if: always()

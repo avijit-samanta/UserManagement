@@ -1,6 +1,5 @@
 node_modules/
 dist/
-data/db.json
 *.log
 .env
 e2e/.auth/

@@ -3,8 +3,6 @@ client/node_modules
 server/node_modules
 client/dist
 server/dist
-data/db.json
-data/db.json.tmp
 certs/
 .git
 .gitignore

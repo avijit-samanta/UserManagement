@@ -57,6 +57,14 @@ export interface TicketConversationData {
   userReply: string;
 }
 
+export interface FileAttachmentsData {
+  ticket: NewTicketData;
+  adminReply: string;
+  repositoryUpload: {
+    topic: string;
+  };
+}
+
 export interface TestData {
   roles: RoleTestData[];
   profileUpdate: {
@@ -66,4 +74,5 @@ export interface TestData {
   registration: RegistrationScenario[];
   adminAddUser: AdminAddUserData;
   ticketConversation: TicketConversationData;
+  fileAttachments: FileAttachmentsData;
 }

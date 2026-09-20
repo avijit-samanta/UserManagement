@@ -419,6 +419,11 @@ a {
   color: var(--color-danger);
 }
 
+.form-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 /* ---------- Buttons ---------- */
 
 .btn {
@@ -559,9 +564,15 @@ a {
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
+  /* Without this, the sticky .app-header's z-index: 10 out-stacks the
+     overlay (whose z-index is otherwise auto) and blocks clicks anywhere a
+     tall dialog's top edge lands near the header — including the new close
+     button. */
+  z-index: 20;
 }
 
 .app-dialog-content[data-reach-dialog-content] {
+  position: relative;
   width: 100%;
   max-width: 560px;
   max-height: calc(100vh - var(--space-8));
@@ -570,8 +581,41 @@ a {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  padding: var(--space-6);
+  /* Extra top padding reserves a clear strip for .app-dialog-close (below)
+     so it never overlaps a title row that has its own top-right content,
+     like TicketDetail's status badge. */
+  padding: calc(var(--space-6) + 28px) var(--space-6) var(--space-6);
   margin: 0;
+}
+
+.app-dialog-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.app-dialog-close:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+}
+
+.app-dialog-close:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 /* ---------- Ticket detail ---------- */
@@ -625,4 +669,49 @@ a {
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
   margin-bottom: var(--space-1);
+}
+
+/* ---------- Attachments ---------- */
+
+.attachment-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.attachment-chip a {
+  color: var(--color-primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.attachment-chip a:hover {
+  text-decoration: underline;
+}
+
+.attachment-size {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.upload-form {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px dashed var(--color-border);
 }

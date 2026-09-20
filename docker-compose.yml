@@ -14,16 +14,19 @@ services:
     environment:
       PORT: '8080'
       HTTPS_PORT: '4443'
+      # All app data (users/tickets/messages/attachment metadata) lives in
+      # Supabase Postgres now, not a local file — see README's "Connecting
+      # to Supabase" — so these three replace the old data/db.json volume.
+      # Sourced from the host's .env via env_file below; SUPABASE_URL and
+      # SUPABASE_SERVICE_ROLE_KEY must both be set there.
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    env_file:
+      - path: ./.env
+        required: false
     volumes:
-      # Persists data/db.json (and its .tmp write-lock file) across
-      # container restarts/rebuilds. Without this, every recreated
-      # container reseeds the two demo accounts from scratch.
-      - simplehelpdesk-data:/app/data
       # TLS cert/key (see README.md "Running over HTTPS" — generate with
       # `npm run certs:generate` or drop in a real certificate). Read-only;
       # missing this entirely just falls back to HTTP-only on PORT.
       - ./certs:/app/certs:ro
     restart: unless-stopped
-
-volumes:
-  simplehelpdesk-data:

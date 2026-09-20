@@ -30,4 +30,24 @@ test.describe('Submit New Request (data-driven)', () => {
     await expect(row).toBeVisible();
     await expect(row.getByText('open', { exact: true })).toBeVisible();
   });
+
+  test('the ticket details dialog has a visible close button', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.getByTestId('nav-new-request').click();
+
+    const uniqueTitle = `${ticket.title} ${Date.now()}`;
+    await page.getByTestId('ticket-title-input').fill(uniqueTitle);
+    await page.getByTestId('ticket-description-input').fill(ticket.description);
+    await page.getByTestId('ticket-submit-button').click();
+    await expect(page.getByText('Your request has been submitted to the administrator.')).toBeVisible();
+
+    await page.getByTestId('nav-my-tickets').click();
+    await page.locator('tr', { hasText: uniqueTitle }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Ticket details' });
+    await expect(dialog).toBeVisible();
+
+    await page.getByTestId('dialog-close-button').click();
+    await expect(dialog).toHaveCount(0);
+  });
 });

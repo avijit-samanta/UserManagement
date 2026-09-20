@@ -12,7 +12,7 @@ A help desk web app with two roles — **Administrator** and **Normal User** —
 |---|---|
 | **Frontend** | React 18 + TypeScript, built with Vite |
 | **Backend** | Express + TypeScript, Node 20 |
-| **Data store** | A single local JSON file (`data/db.json`) behind a repository interface — not a real database (see §2, "things to understand before starting") |
+| **Data store** | Supabase Postgres (users/tickets/messages/attachment metadata) + Supabase Storage (uploaded files), behind a repository interface — see §2 and the README's [Connecting to Supabase](../README.md#connecting-to-supabase) |
 | **Auth** | HttpOnly session cookie, in-memory session store (server restart clears sessions, not user data) |
 | **UI library** | [Reach UI](https://reach.tech/) for accessible `Tabs`, `Menu`, `Dialog` |
 | **Testing** | Vitest (30 unit tests, server-side) + Playwright (13 E2E/integration cases) — see §4 |
@@ -25,8 +25,8 @@ A help desk web app with two roles — **Administrator** and **Normal User** —
 
 These are the load-bearing decisions that shape everything else in this document. Skipping this section is how you end up surprised later.
 
-1. **There is no real database.** `data/db.json` is the entire persistence layer — read/written directly by `server/src/data/db.ts` with a write-lock and atomic temp-file+rename writes. It's structured behind a repository interface (`userRepository`, `ticketRepository`) specifically so a real database can slot in later without touching route code, but that migration hasn't happened.
-2. **`data/db.json` is real user data, not disposable test output.** It's gitignored, has no backup, and there is no undo. Do not delete or reseed it as part of "cleanup" — that has actually happened once in this project's history and it cost real data. If you need an isolated database for testing, use the `DB_PATH` env var (`server/src/data/db.ts`) to point at a throwaway file instead.
+1. **Data lives in Supabase, not a local file.** Users/tickets/messages/attachment metadata are Postgres tables (`server/src/data/repositories/*Repository.ts`, via `@supabase/supabase-js`); uploaded files are objects in a Supabase Storage bucket (`server/src/services/attachmentUpload.ts`). This used to be a single local `data/db.json` behind the same repository interface — that interface is exactly why the swap didn't touch a single route file. See the README's [Connecting to Supabase](../README.md#connecting-to-supabase) for credentials, migrations, and the RLS decision.
+2. **Real data lives in one place: your Supabase project's `public` schema.** There is no local file to accidentally `rm`, but the same discipline still applies to the database itself — never run a destructive operation (`DROP`, `TRUNCATE`, a bulk `DELETE`) against `public` as part of "cleanup" without asking first. This has actually happened once in this project's history (back when data lived in `data/db.json`) and cost real data. Repository unit tests are isolated from `public` entirely — they run against a separate `test` schema in the same project (see §4a).
 3. **Self-registration is wide open by design, not by oversight.** `/register` lets anyone create an **Administrator** account with no approval step. That's a deliberate simplification for this app's current scope — see the README's "Security note on open registration" before deploying this anywhere public. Fixing it means gating admin signups (invite code, email allow-list, or removing the role choice from public registration and promoting to admin manually).
 4. **Dev and production are structurally separated by port, on purpose.** Dev (`npm run dev`) always uses `4000`/`5173` and always stays plain HTTP; production (`npm start` / Docker) defaults to `8080`/`4443` and goes HTTPS the moment a certificate exists. This was a real bug once (a certificate accidentally present made dev mode's API proxy break) — see README's "Running over HTTPS" for the full story. Don't "fix" the port numbers back to matching without understanding why they're deliberately different.
 5. **Testing is two layers, not one.** Fast, isolated Vitest unit tests (`server/src/**/*.test.ts`) for business logic and pure functions, plus the slower Playwright suite driving the real UI against the real (file-backed) API for end-to-end behavior. See §4 for exactly what each does and doesn't cover.
@@ -76,7 +76,7 @@ These are the load-bearing decisions that shape everything else in this document
 
 ### 4a. Unit tests (Vitest) — **30 tests across 6 files**
 
-Runs against `server/src` directly (no build step needed), isolated from the real `data/db.json` (see §2, point 2 — repository tests point `DB_PATH` at a throwaway temp file, never the real one).
+Runs against `server/src` directly (no build step needed), isolated from real data (see §2, point 2) by querying a separate `test` Postgres schema instead of `public` — truncated between tests, never touching real rows. Requires `test` added under Project Settings → API → "Exposed schemas" in the Supabase dashboard (a one-time setup step, not a code change) — see the README's [Connecting to Supabase](../README.md#connecting-to-supabase).
 
 ```bash
 npm run test:unit            # run once
@@ -95,7 +95,7 @@ npm run test:unit:coverage   # with a coverage report (server/coverage/, gitigno
 
 This is what closes the original gap flagged when this document was first written: repository business rules (like "a user reply reopens the ticket") used to only be verified end-to-end through a ~45-second Playwright run. Now a regression there fails in milliseconds, locally, before a browser is ever launched.
 
-**Still not unit-tested** (reasonable next candidates, in roughly descending priority): the route handlers themselves (`server/src/routes/*.ts`) — currently only covered by Playwright hitting them over HTTP through the full app; the session module (`server/src/middleware/session.ts`) — cookie creation/expiry logic; the DB write-lock/atomic-rename logic in `server/src/data/db.ts` under concurrent writes.
+**Still not unit-tested** (reasonable next candidates, in roughly descending priority): the route handlers themselves (`server/src/routes/*.ts`) — currently only covered by Playwright hitting them over HTTP through the full app; the session module (`server/src/middleware/session.ts`) — cookie creation/expiry logic; the ticket-id-generation trigger and RLS-off assumption in `supabase/migrations/` under concurrent inserts.
 
 ### 4b. QA / regression suite (Playwright) — what actually exists today
 
@@ -140,8 +140,8 @@ build-and-typecheck ─┐
 | Stage | What it does today |
 |---|---|
 | `build-and-typecheck` | `npm ci` + `npm run build` (typechecks and builds both client and server). |
-| `unit-tests` | Runs the 30-case Vitest suite (`npm run test:unit:coverage`) in parallel with `build-and-typecheck` — both are fast, so this doesn't add to pipeline time. Uploads the coverage report as an artifact. |
-| `regression-tests` | Needs **both** of the above to pass first. Installs Chromium, runs the full 13-case Playwright suite. Uploads the HTML report as an artifact regardless of pass/fail. |
+| `unit-tests` | Runs the Vitest suite (`npm run test:unit:coverage`) in parallel with `build-and-typecheck` — both are fast, so this doesn't add to pipeline time. Needs the `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` repo secrets (repository tests hit the real project's `test` schema). Uploads the coverage report as an artifact. |
+| `regression-tests` | Needs **both** of the above to pass first. Installs Chromium, runs the full Playwright suite — its `npm run dev` webServer also needs the same two Supabase secrets. Uploads the HTML report as an artifact regardless of pass/fail. |
 | `build-and-push-image` | Builds the Docker image, pushes to GHCR (`ghcr.io/<owner>/<repo>`) tagged with the commit SHA and `latest`. Uses the repo's built-in `GITHUB_TOKEN` — no registry secrets needed. |
 | `deploy-staging` / `deploy-production` | **Placeholders.** They currently just `echo` what they'd do. Production is gated behind a GitHub Environment with required reviewers — the manual-approval mechanism already exists, it just has nothing real to deploy to yet. |
 
@@ -167,15 +167,14 @@ Already built (see README's "Containerization (Docker)" for the step-by-step):
 - **`Dockerfile`** — 3-stage build (install deps → build → pruned production runtime). Runs as non-root. Exposes `8080` (HTTP/redirect) and `4443` (HTTPS).
 - **`docker-compose.yml`** — one command (`docker compose up --build`) builds and runs it, with the data volume and a certs bind-mount already wired up.
 - **HTTPS is opportunistic**: mount a cert at `certs/` (generate one with `npm run certs:generate`) and the container serves HTTPS + an HTTP→HTTPS redirect on two ports; omit it and it's HTTP-only on one port. No code change needed either way — same image.
-- **Data persistence**: a named volume (`simplehelpdesk-data`) survives container recreation; without it, every recreated container starts from the two seeded demo accounts again (see §2, point 2 — this is exactly the kind of accidental reset to avoid, just at the container-lifecycle level instead of a stray `rm`).
+- **Data persistence**: nothing to configure at the container level — data lives in Supabase, not inside the container, so `docker compose down && docker compose up` (or any rebuild/redeploy) never loses anything. The container just needs `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` set (see the README's [Containerization → Step 3](../README.md#step-3--environment-variables-supabase)).
 - **Health check**: `GET /healthz` (`server/src/routes/health.ts`) returns `{status:"ok", uptimeSeconds, timestamp}` with no auth required. It answers correctly on `PORT` whether that port is serving the app directly or is redirect-only (HTTPS active) — the redirect server special-cases this one path instead of 301'ing it. The `Dockerfile`'s `HEALTHCHECK` instruction polls it every 30s; `docker compose ps` / `docker ps` now show real `healthy`/`unhealthy` status, not just "process is running."
 
 **What's realistically next, in likely priority order:**
-1. **A real database.** The repository-interface seam (§2, point 1) means this is the single highest-leverage change — it removes the entire "shared JSON file" class of problem (single point of failure, no concurrent-write safety across multiple container replicas, no real backup story).
-2. **Multi-replica readiness.** Right now the app can only ever run as one instance because sessions are in-memory (`server/src/middleware/session.ts`) and data is a single local file with an in-process write lock — neither survives or coordinates across replicas. Fixing this requires an external session store (Redis, or a signed JWT instead of a server-side session) *and* the real-database migration above.
-3. **A managed secrets story for HTTPS certs** — right now certs are a manually-generated, manually-mounted local file. In a real deployment, that becomes a cert-manager/Let's Encrypt/load-balancer-terminated-TLS setup instead of `npm run certs:generate`.
-4. **Structured logging** — current output is plain `console.log`/`console.warn` lines to stdout. Fine for `docker compose logs`, but a real deployment behind a log aggregator (CloudWatch, Loki, ELK) benefits from structured JSON logs with request IDs.
-5. **A deeper health check** — today `/healthz` only proves the Node process is alive and answering HTTP, not that it can actually read/write `data/db.json`. A "readiness" variant that does a real DB round-trip would catch a mounted-volume-permissions problem that a liveness-only check can't.
+1. **Multi-replica readiness.** The data layer is no longer the blocker (Postgres + Storage already coordinate fine across replicas) — but sessions are still in-memory (`server/src/middleware/session.ts`), so the app can still only run as one instance. Fixing this needs an external session store (Redis) or a signed JWT instead of a server-side session.
+2. **A managed secrets story for HTTPS certs** — right now certs are a manually-generated, manually-mounted local file. In a real deployment, that becomes a cert-manager/Let's Encrypt/load-balancer-terminated-TLS setup instead of `npm run certs:generate`. (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` already go through real secrets — GitHub Environment secrets in CI, an `.env`/secret store in production — rather than anything committed.)
+3. **Structured logging** — current output is plain `console.log`/`console.warn` lines to stdout. Fine for `docker compose logs`, but a real deployment behind a log aggregator (CloudWatch, Loki, ELK) benefits from structured JSON logs with request IDs.
+4. **A deeper health check** — today `/healthz` only proves the Node process is alive and answering HTTP, not that it can actually reach Supabase. A "readiness" variant that does a real Postgres round-trip would catch a misconfigured `SUPABASE_URL`/key or an outage that a liveness-only check can't.
 
 ---
 

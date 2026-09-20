@@ -9,7 +9,7 @@
       },
       "storageStateFile": "admin.json",
       "loginSuccessTestId": "nav-user-profiles",
-      "expectedVisibleNavTestIds": ["nav-user-profiles", "nav-query-management"],
+      "expectedVisibleNavTestIds": ["nav-user-profiles", "nav-query-management", "nav-file-repository"],
       "expectedAbsentNavTestIds": ["nav-my-profile", "nav-new-request", "nav-my-tickets"],
       "apiChecks": [
         {
@@ -28,7 +28,7 @@
       },
       "storageStateFile": "user.json",
       "loginSuccessTestId": "nav-my-profile",
-      "expectedVisibleNavTestIds": ["nav-my-profile", "nav-new-request", "nav-my-tickets"],
+      "expectedVisibleNavTestIds": ["nav-my-profile", "nav-new-request", "nav-my-tickets", "nav-file-repository"],
       "expectedAbsentNavTestIds": ["nav-user-profiles", "nav-query-management"],
       "apiChecks": [
         {
@@ -86,5 +86,15 @@
       "Can you confirm the exact error you're seeing?"
     ],
     "userReply": "Sure - it says invalid credentials even though the password is correct."
+  },
+  "fileAttachments": {
+    "ticket": {
+      "title": "Automated QA file attachment check-in",
+      "description": "Created by the Playwright suite to verify file attachments on tickets, replies, and the File Repository."
+    },
+    "adminReply": "Thanks for the screenshot, taking a look now.",
+    "repositoryUpload": {
+      "topic": "Automated QA standalone upload"
+    }
   }
 }

@@ -1,6 +1,16 @@
+import path from 'path';
+// Loads .env from the repo root (three levels up from server/dist/index.js,
+// matching the certs/ path resolution below) BEFORE anything else runs, so
+// every module that reads SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY at request
+// time — never at import time, so ordering here is just about being early
+// enough — sees them. Explicit path because the process's cwd depends on
+// how it was launched (npm workspace vs. Docker WORKDIR), and dotenv's
+// default only checks cwd.
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
@@ -13,6 +23,7 @@ import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
 import usersRoutes from './routes/users';
 import ticketsRoutes from './routes/tickets';
+import attachmentsRoutes from './routes/attachments';
 
 // Default 8080, not 4000: dev mode (server/package.json's "dev" script)
 // explicitly sets PORT=4000 to match the Vite proxy target in
@@ -56,6 +67,7 @@ async function main() {
   app.use('/api/profile', profileRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/tickets', ticketsRoutes);
+  app.use('/api/attachments', attachmentsRoutes);
 
   const clientDist = path.resolve(__dirname, '../../client/dist');
   if (fs.existsSync(clientDist)) {
