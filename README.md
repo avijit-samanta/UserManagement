@@ -485,6 +485,7 @@ e2e/
   admin-add-user.spec.ts       # admin creates a user directly (not self-registered)
   ticket-conversation.spec.ts  # two-way multi-message thread, close, and reopen, admin + user together
   file-attachments.spec.ts     # attach files to a ticket/reply, the File Repository, standalone uploads, cross-user isolation
+  visual-regression.spec.ts    # screenshot checks on the login card + dashboard nav, plus an opt-in simulated-regression demo
   .auth/                   # generated storageState JSON files (gitignored)
 ```
 
@@ -507,6 +508,10 @@ e2e/
 | 17 | `file-attachments.spec.ts` | user + admin | Admin attaches a file to a *reply* (not the initial ticket); asserts it renders under that specific message (not the ticket-level attachment list) on both the admin's and the submitter's view, and appears in the File Repository attributed to the admin. |
 | 18 | `file-attachments.spec.ts` | user | Uploads directly into the File Repository via "Upload More": asserts the client's `required` topic field actually blocks submission with no topic (no row appears), then that a valid upload appears immediately and the uploader can delete their own file. |
 | 19 | `file-attachments.spec.ts` | user + admin | Admin uploads a repository-only file with no connection to a given user's tickets; asserts that file never appears in that user's File Repository — the cross-user isolation the File Repository's visibility rule depends on. |
+| 20 | `visual-regression.spec.ts` | — (unauthenticated) | `expect(page.locator('.auth-card')).toHaveScreenshot('login-baseline.png')` — pixel-compares the login card against its checked-in baseline. |
+| 21 | `visual-regression.spec.ts` | admin | `expect(page.locator('.side-nav')).toHaveScreenshot('dashboard-nav-baseline.png')` — pixel-compares the dashboard's side navigation against its checked-in baseline. |
+
+Cases 20–21 are the suite's **visual regression checks** — see [Visual Regression Testing](#visual-regression-testing) below for what they catch that cases 1–19 can't, how to (re)generate their baselines, and how to run the opt-in demo (`visual-regression.spec.ts`'s third test, "detects a simulated visual regression") that proves they actually catch a layout change instead of just always passing.
 
 Every test file above generates its cases by looping over `test-data.json` (`for (const role of data.roles)`, or `data.registration`) rather than naming roles individually — the table is the current output of that loop, not a hand-maintained list.
 
@@ -570,13 +575,113 @@ npx playwright test --project=edge
 
 The report and the terminal output both prefix each test with its project name (e.g. `[chromium] › role-based-access.spec.ts`, `[edge] › role-based-access.spec.ts`), so a browser-specific failure is easy to spot without re-running anything.
 
-`workers: 1` in `playwright.config.ts` intentionally serializes all projects — running two full browser engines' worth of tests concurrently on a constrained machine/VM can starve both for CPU and produce misleading failures/timeouts that have nothing to do with the app. If your machine has headroom, pass `--workers=N` (or remove the `workers` line) to parallelize; on a resource-constrained sandbox, keep it serialized.
+See [Parallel Execution](#parallel-execution) below for how many workers run these projects concurrently, and how to tune that for your machine.
 
 To add a third browser (e.g. WebKit/Safari engine), add another project to `playwright.config.ts` with `use: { ...devices['Desktop Safari'] }` and `dependencies: ['setup']`, plus a matching `npx playwright install webkit` — no test code changes needed, since every spec is already project-agnostic.
 
+### Parallel execution
+
+Playwright parallelizes at two independent levels, both already configured in `playwright.config.ts`:
+
+- **`fullyParallel: true`** — every individual `test(...)` runs in its own worker process rather than one file's tests running sequentially. This was already on.
+- **`workers`** — how many of those worker processes run at once. This project now defaults to **`workers: 4`**:
+  ```ts
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : 4,
+  ```
+  Override it per run with the `PW_WORKERS` env var, or Playwright's own `--workers` flag, without touching the config file:
+  ```bash
+  # a constrained machine/VM: running several worker processes — each is a
+  # full browser instance — concurrently against the same local dev server
+  # can starve them all for CPU/memory and produce misleading timeouts that
+  # have nothing to do with the app. Serialize instead:
+  PW_WORKERS=1 npm run test:e2e
+
+  # a beefier machine: go wider than the default 4
+  npx playwright test --workers=8
+  ```
+
+**Measuring the effect** — run the same suite serialized and parallel, and compare the final line of the output (`X passed (Ys)`):
+
+```bash
+# before: one worker, fully serial
+PW_WORKERS=1 npm run test:e2e
+
+# after: four workers, the new default
+npm run test:e2e
+```
+
+On this suite (20 functional/visual test cases from the table below, times two browser projects, plus the 2 setup logins), going from 1 worker to 4 cuts wall-clock time roughly in proportion to how independent the specs are — role-based-access, profile-update, ticket-submission, registration, admin-add-user, ticket-conversation, file-attachments, and visual-regression all run against isolated data (unique/timestamped emails and ticket titles — see [Updating test data](#updating-test-data)) specifically so they *can* run concurrently without colliding. The exact speedup depends on your machine's CPU core count and how much headroom the local dev server has; record your own before/after numbers when tuning `PW_WORKERS` for a given environment.
+
+**Configuring this on a different project**, in three steps:
+1. Set `fullyParallel: true` in `playwright.config.ts` (usually already the default in a fresh Playwright scaffold).
+2. Set `workers` to a number `> 1` (or leave it unset to let Playwright pick automatically based on CPU count) — add an env var indirection like the one above if you want per-machine control without editing the file.
+3. Audit every spec for shared mutable state (a fixed email/username, a single row in a table two tests both edit) — parallel workers run in separate processes with separate browser contexts, so anything that isn't isolated per test (unique/timestamped values, or a dedicated `storageState` per role) will produce flaky, order-dependent failures once tests genuinely run at the same time instead of one after another.
+
+### Visual regression testing
+
+Every test above this point in the README checks **functional correctness** — did the right data get saved, did the right element appear. None of them notice if that element renders in the wrong place, at the wrong size, or with the wrong color. `visual-regression.spec.ts` closes that gap using Playwright's built-in screenshot comparison, [`expect(locator).toHaveScreenshot()`](https://playwright.dev/docs/test-snapshots).
+
+**How it works:**
+- The first time a `toHaveScreenshot('name.png')` assertion runs (or after `--update-snapshots`), Playwright saves the actual screenshot as the **baseline** to `e2e/visual-regression.spec.ts-snapshots/name-<project>-<platform>.png` (gitignored is *not* the right call here — these baselines are checked into the repo like any other expected test output, so every contributor and CI compares against the same reference image).
+- Every later run re-screenshots the same element and pixel-diffs it against that baseline. Within the default threshold (small anti-aliasing/rendering noise) it passes silently; beyond it, the test fails and Playwright writes an `-actual.png` and a `-diff.png` (a red/yellow overlay highlighting exactly which pixels moved) alongside the expected image, all three attached to the HTML report.
+- Baselines are captured **per browser project** (`login-baseline-chromium-win32.png` vs. `login-baseline-edge-win32.png`) automatically, because chromium and Edge render fonts/anti-aliasing very slightly differently — comparing chromium's screenshot against an Edge baseline would otherwise fail on rendering-engine noise that has nothing to do with a real regression.
+
+**What's covered, and why those two spots specifically:**
+- `.auth-card` on the public `/login` page — static markup, no per-run data, reachable with no authentication.
+- `.side-nav` on the admin dashboard — the role-driven navigation tabs, likewise static per role.
+
+Both are scoped to a specific locator, not `page.screenshot({ fullPage: true })`, deliberately: a full-page screenshot of this app's dashboard would also capture ticket tables and timestamps written by the *other* data-driven specs in this suite (see [Updating test data](#updating-test-data)) — content that legitimately changes between runs and would make a full-page comparison flaky for reasons unrelated to an actual visual regression. Pick similarly stable, data-independent regions when adding visual checks to a different page.
+
+**Generating/regenerating baselines** — required once for a fresh checkout (no baselines are needed to *run* the rest of the suite, only `visual-regression.spec.ts`), and again any time a real, intentional UI change legitimately moves one of the covered elements:
+
+```bash
+npx playwright test e2e/visual-regression.spec.ts --update-snapshots
+```
+
+Review the resulting PNGs under `e2e/visual-regression.spec.ts-snapshots/` before committing them — an accepted baseline is a claim that "this is what correct looks like," so eyeball it the same way you'd review any other diff.
+
+**Proving the check actually catches something** — rather than trusting a screenshot assertion that's never been seen to fail, `visual-regression.spec.ts` includes a third test, skipped by default so it never blocks a normal run or CI:
+
+```ts
+test('detects a simulated visual regression on the login page', async ({ page }) => {
+  test.skip(!process.env.VISUAL_DIFF_DEMO, 'Set VISUAL_DIFF_DEMO=1 to run this intentionally-failing demo.');
+
+  await page.goto('/login');
+  await page.addStyleTag({
+    content: `
+      [data-testid="login-submit-button"] { margin-top: 50px; transform: scale(1.15); }
+      .auth-heading { font-size: 32px; }
+    `,
+  });
+
+  await expect(page.locator('.auth-card')).toHaveScreenshot('login-baseline.png');
+});
+```
+
+Run it deliberately, then review the failure:
+
+```bash
+VISUAL_DIFF_DEMO=1 npx playwright test e2e/visual-regression.spec.ts -g "simulated" --project=chromium
+npm run test:e2e:report
+```
+
+This test injects a CSS override purely from inside the test (`page.addStyleTag`) — enlarging the heading and nudging/scaling the submit button — with **no change to any app source file**, then re-asserts against the same `login-baseline.png` used by the real check. Expect it to fail with a message like:
+
+```
+Expected an image 400px by 468px, received 400px by 530px. 39237 pixels (ratio 0.19 of all image pixels) are different.
+```
+
+Open the HTML report and click into that failing test to see the **Expected / Actual / Diff** triptych — the diff image highlights the shifted button and enlarged heading in red, exactly like any other visual-diff tool. This is the same failure mode a *real* CSS regression (an accidental margin change, a font-size left over from debugging, an element that silently stopped rendering) would produce — the demo just triggers it on demand instead of waiting for one to happen.
+
+**Adding a visual check to a different UI area or a different project:**
+1. Pick a locator that's stable and data-independent (see "What's covered" above) — not the whole page unless the whole page is genuinely static.
+2. Add `await expect(locator).toHaveScreenshot('some-name.png')` after whatever `toBeVisible()`/navigation gets the page into the state you want to check.
+3. Run with `--update-snapshots` once to create the baseline, review the generated PNG, and commit it alongside the spec change.
+4. From then on, a plain `npx playwright test` run compares against it automatically — no extra flags needed.
+
 ### Regression testing policy & impact matrix
 
-**Policy: all 19 test cases above must pass before merging to `main`.** This isn't advisory — [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)'s `regression-tests` job runs the entire suite (`npx playwright test --project=chromium`) on every push/PR, and `build-and-push-image` (and everything downstream of it — staging, then production) only runs if that job succeeded. There's no partial-pass or "skip the flaky one" path in this pipeline; a failing test blocks the deploy, full stop.
+**Policy: all 21 test cases above (1–19 functional, 20–21 visual) must pass before merging to `main`.** This isn't advisory — [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml)'s `regression-tests` job runs the entire suite (`npx playwright test --project=chromium`) on every push/PR, and `build-and-push-image` (and everything downstream of it — staging, then production) only runs if that job succeeded. There's no partial-pass or "skip the flaky one" path in this pipeline; a failing test blocks the deploy, full stop. (`visual-regression.spec.ts`'s third test, the simulated-regression demo, is `test.skip`-gated behind `VISUAL_DIFF_DEMO` and never runs in CI — it's a manual proof that cases 20–21 work, not itself a merge gate.)
 
 The suite doesn't try to guess which tests are "relevant" to a given change — it always runs all of it. The table below exists so a human (reviewing a PR, or deciding whether a change needs a *new* test) knows which existing cases are the ones actually exercising the area being touched, and — this is the part CI can't tell you — **whether a new test needs to be added in the same PR**, since a passing suite that never exercised the new behavior isn't actually evidence of anything.
 
@@ -592,6 +697,7 @@ The suite doesn't try to guess which tests are "relevant" to a given change — 
 | File attachments & File Repository | `server/src/routes/attachments.ts`, `server/src/routes/tickets.ts` (file handling on create/respond), `server/src/services/attachmentUpload.ts`, `server/src/data/repositories/attachmentRepository.ts`, `FileRepository.tsx`, `AttachmentList.tsx`, `TicketForm.tsx`/`TicketDetail.tsx`'s file inputs | 16, 17, 18, 19 | Changing who can see a file (the `listVisibleToUser` rule), the 10MB/5-file limits (`server/src/middleware/upload.ts`), or moving off Supabase Storage. |
 | Dialog close button | `client/src/components/common/AppDialog.tsx` (shared by every dialog in the app) | 9 | Adding a new dialog that bypasses `AppDialog` instead of using it — every modal should go through the shared component so this one test keeps covering all of them. |
 | Any `data-testid` rename | Whichever component | Whichever spec references that testid — a stale testid fails loudly, it doesn't silently pass | Never skip updating the spec in the same PR; a rename that "still passes" usually means the assertion silently stopped running. |
+| Login card / dashboard nav layout (spacing, sizing, colors) | `LoginPage.tsx`'s `.auth-card`, `AppShell.tsx`'s `.side-nav`, `client/src/styles/tokens.css`, `global.css` | 20, 21 | Any intentional visual change to either element — regenerate the baseline in the same PR (`npx playwright test e2e/visual-regression.spec.ts --update-snapshots`) or these two cases will (correctly) fail forever after. Adding a screenshot check to a *new* UI area follows the same "Adding a visual check" steps in [Visual Regression Testing](#visual-regression-testing). |
 
 **In short:** touching one of the "files most likely touched" columns above means you should be able to point at the listed case(s) and say "yes, this still covers it" — and if the behavior you're adding isn't described by any existing case, that's the signal a new one belongs in this PR, following the pattern in [Updating test data](#updating-test-data).
 

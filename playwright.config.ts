@@ -5,11 +5,14 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Running two browser engines' workers concurrently against the same
-  // local dev server is prone to resource contention on constrained
-  // machines/VMs. One worker serializes all projects — slower, but stable.
-  // Bump this back up (or pass --workers=N) on a machine with more headroom.
-  workers: 1,
+  // Parallel execution: each worker is a separate process running its own
+  // browser instance, so independent test files execute concurrently
+  // instead of one after another. Defaults to 4 workers (set PW_WORKERS to
+  // override, e.g. `PW_WORKERS=1 npm run test:e2e` on a constrained
+  // machine/VM where running two browser engines' workers concurrently
+  // against the same local dev server causes resource contention and
+  // misleading timeouts — or pass --workers=N directly).
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : 4,
   reporter: 'html',
   // Per-test and per-assertion timeouts, raised above Playwright's defaults
   // (30s / 5s) so a manual/headed run through VS Code — where you're
