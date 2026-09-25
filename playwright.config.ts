@@ -12,7 +12,7 @@ export default defineConfig({
   // machine/VM where running two browser engines' workers concurrently
   // against the same local dev server causes resource contention and
   // misleading timeouts — or pass --workers=N directly).
-  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : 4,
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : 2,
   reporter: 'html',
   // Per-test and per-assertion timeouts, raised above Playwright's defaults
   // (30s / 5s) so a manual/headed run through VS Code — where you're
@@ -23,7 +23,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -40,7 +40,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
