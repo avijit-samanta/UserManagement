@@ -130,6 +130,11 @@ export const attachmentRepository = {
     return fromRow(data as AttachmentRow);
   },
 
+  async deleteByUploader(userId: string): Promise<void> {
+    const { error } = await getSupabaseClient().from('attachments').delete().eq('uploaded_by', userId);
+    if (error) throw error;
+  },
+
   async delete(id: string): Promise<Attachment | undefined> {
     const { data, error } = await getSupabaseClient().from('attachments').delete().eq('id', id).select('*').maybeSingle();
     if (error) {

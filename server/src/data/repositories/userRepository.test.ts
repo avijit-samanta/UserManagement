@@ -79,3 +79,24 @@ describe('userRepository.update', () => {
     expect(updated).toBeUndefined();
   });
 });
+
+describe('userRepository.delete', () => {
+  it('removes the user and reports whether anything was deleted', async () => {
+    const user = await userRepository.create({
+      email: 'delete-me@example.com',
+      passwordHash: 'hashed',
+      role: 'user',
+      name: 'Delete Me',
+      phone: '',
+      address: '',
+    });
+
+    expect(await userRepository.delete(user.id)).toBe(true);
+    expect(await userRepository.findById(user.id)).toBeUndefined();
+    expect(await userRepository.delete(user.id)).toBe(false);
+  });
+
+  it('returns false for an id that is not a UUID', async () => {
+    expect(await userRepository.delete('not-a-uuid')).toBe(false);
+  });
+});

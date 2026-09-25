@@ -16,4 +16,5 @@ export const usersApi = {
   get: (id: string) => api.get<{ user: PublicUser }>(`/users/${id}`),
   create: (input: CreateUserInput) => api.post<{ user: PublicUser }>('/users', input),
   update: (id: string, data: ProfileUpdateInput) => api.put<{ user: PublicUser }>(`/users/${id}`, data),
+  remove: (id: string) => api.del<void>(`/users/${id}`),
 };

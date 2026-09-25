@@ -38,6 +38,10 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
     // Repository, whose Topic column also shows this same unique title —
     // mounted at once, and both use a plain <tr> for their rows.
     await page.getByTestId('nav-my-tickets').click();
+    // Tables are paginated (20 per page) and other tests add rows in parallel,
+    // so each lookup below searches for its row first. That also keeps the
+    // "never shows" checks meaningful rather than true because of paging.
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await page.locator('[data-testid^="ticket-row-"]', { hasText: uniqueTitle }).click();
     await expect(page.getByTestId('attachment-download-link').filter({ hasText: fileName })).toBeVisible();
     await page.keyboard.press('Escape');
@@ -45,6 +49,7 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
     // Also visible in the standalone File Repository section, with the
     // ticket's title used automatically as the Topic column.
     await page.getByTestId('nav-file-repository').click();
+    await page.getByTestId('file-repo-filter-search').filter({ visible: true }).fill(fileName);
     const row = page.locator('[data-testid^="file-repo-row-"]', { hasText: fileName });
     await expect(row).toBeVisible();
     await expect(row).toContainText(uniqueTitle);
@@ -68,6 +73,7 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
     const adminPage = await adminContext.newPage();
     await adminPage.goto('/dashboard');
     await adminPage.getByTestId('nav-query-management').click();
+    await adminPage.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await adminPage.locator('[data-testid^="ticket-row-"]', { hasText: uniqueTitle }).click();
 
     await adminPage.getByTestId('ticket-respond-textarea').fill(adminReply);
@@ -84,12 +90,14 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
     // file on their own ticket is visible to them).
     await page.reload();
     await page.getByTestId('nav-my-tickets').click();
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await page.locator('[data-testid^="ticket-row-"]', { hasText: uniqueTitle }).click();
     const userSideMessage = page.getByTestId('ticket-message').filter({ hasText: adminReply });
     await expect(userSideMessage.getByTestId('attachment-download-link')).toContainText(fileName);
     await page.keyboard.press('Escape');
 
     await page.getByTestId('nav-file-repository').click();
+    await page.getByTestId('file-repo-filter-search').filter({ visible: true }).fill(fileName);
     const repoRow = page.locator('[data-testid^="file-repo-row-"]', { hasText: fileName });
     await expect(repoRow).toBeVisible();
     await expect(repoRow).toContainText('Alex Administrator');
@@ -109,6 +117,10 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
     // No topic yet — the client requires it via the "required" attribute,
     // so nothing should have been sent; asserting the row never appears
     // catches a regression that silently drops that requirement.
+    // With no files at all there is no table (or search box) to narrow.
+    const repoSearch = page.getByTestId('file-repo-filter-search').filter({ visible: true });
+    await expect(repoSearch.or(page.getByText('No files yet.'))).toBeVisible();
+    if (await repoSearch.count()) await repoSearch.fill(fileName);
     await expect(page.locator(`[data-testid^="file-repo-row-"]:has-text("${fileName}")`)).toHaveCount(0);
 
     await page.getByTestId('file-repo-topic-input').fill(uniqueTopic);
@@ -143,6 +155,10 @@ test.describe('File attachments: tickets, replies, and the File Repository', () 
 
     await page.goto('/dashboard');
     await page.getByTestId('nav-file-repository').click();
+    // With no files at all there is no table (or search box) to narrow.
+    const repoSearch = page.getByTestId('file-repo-filter-search').filter({ visible: true });
+    await expect(repoSearch.or(page.getByText('No files yet.'))).toBeVisible();
+    if (await repoSearch.count()) await repoSearch.fill(fileName);
     await expect(page.locator(`[data-testid^="file-repo-row-"]:has-text("${fileName}")`)).toHaveCount(0);
   });
 });

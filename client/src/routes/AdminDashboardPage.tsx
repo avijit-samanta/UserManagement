@@ -10,13 +10,22 @@ import { TicketList } from '../components/tickets/TicketList';
 import { TicketDetail } from '../components/tickets/TicketDetail';
 import { FileRepository } from '../components/attachments/FileRepository';
 import { usersApi } from '../api/users';
+import { useAuth } from '../auth/AuthContext';
 import { ticketsApi } from '../api/tickets';
 import type { PublicUser, Ticket } from '../types';
 
-function UserProfilesSection() {
+function UserProfilesSection({ onUserDeleted }: { onUserDeleted: () => void }) {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selected, setSelected] = useState<PublicUser | null>(null);
   const [adding, setAdding] = useState(false);
+
+  async function handleDelete(target: PublicUser) {
+    await usersApi.remove(target.id);
+    setUsers((prev) => prev.filter((u) => u.id !== target.id));
+    if (selected?.id === target.id) setSelected(null);
+    onUserDeleted();
+  }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -39,7 +48,7 @@ function UserProfilesSection() {
       {loading ? (
         <div className="empty-state">Loading…</div>
       ) : (
-        <UserList users={users} onSelect={setSelected} />
+        <UserList users={users} onSelect={setSelected} currentUserId={currentUser?.id} onDelete={handleDelete} />
       )}
 
       <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Edit user profile">
@@ -93,6 +102,15 @@ function QueryManagementSection({ onAttachmentUploaded }: { onAttachmentUploaded
     if (files.length > 0) onAttachmentUploaded();
   }
 
+  async function handleDelete(ticket: Ticket) {
+    await ticketsApi.remove(ticket.id);
+    setTickets((prev) => prev.filter((t) => t.id !== ticket.id));
+    if (selected?.id === ticket.id) setSelected(null);
+    // The ticket's attachments are deleted with it, so the File Repository
+    // tab (kept mounted by Reach Tabs) needs to refetch as well.
+    if ((ticket.attachments?.length ?? 0) > 0 || ticket.messages.some((m) => (m.attachments?.length ?? 0) > 0)) onAttachmentUploaded();
+  }
+
   async function handleClose() {
     if (!selected) return;
     const { ticket } = await ticketsApi.close(selected.id);
@@ -105,7 +123,7 @@ function QueryManagementSection({ onAttachmentUploaded }: { onAttachmentUploaded
       {loading ? (
         <div className="empty-state">Loading…</div>
       ) : (
-        <TicketList tickets={tickets} onSelect={setSelected} showSubmitter />
+        <TicketList tickets={tickets} onSelect={setSelected} showSubmitter onDelete={handleDelete} />
       )}
 
       <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Ticket details">
@@ -120,15 +138,26 @@ function QueryManagementSection({ onAttachmentUploaded }: { onAttachmentUploaded
 export function AdminDashboardPage() {
   const [filesVersion, setFilesVersion] = useState(0);
   const bumpFilesVersion = () => setFilesVersion((v) => v + 1);
+  // Deleting a user also deletes their tickets and files, so the other two
+  // (always-mounted) tabs need the same remount-to-refetch nudge.
+  const [ticketsVersion, setTicketsVersion] = useState(0);
+  const handleUserDeleted = () => {
+    setTicketsVersion((v) => v + 1);
+    bumpFilesVersion();
+  };
 
   return (
     <AppShell
       sections={[
-        { key: 'user-profiles', label: 'User Profiles', content: <UserProfilesSection /> },
+        {
+          key: 'user-profiles',
+          label: 'User Profiles',
+          content: <UserProfilesSection onUserDeleted={handleUserDeleted} />,
+        },
         {
           key: 'query-management',
           label: 'Query Management',
-          content: <QueryManagementSection onAttachmentUploaded={bumpFilesVersion} />,
+          content: <QueryManagementSection key={ticketsVersion} onAttachmentUploaded={bumpFilesVersion} />,
         },
         { key: 'file-repository', label: 'File Repository', content: <FileRepository key={filesVersion} /> },
       ]}

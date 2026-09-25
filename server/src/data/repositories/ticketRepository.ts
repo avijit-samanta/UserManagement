@@ -177,6 +177,35 @@ export const ticketRepository = {
     return ticket;
   },
 
+  async deleteByUser(userId: string): Promise<void> {
+    const { error } = await getSupabaseClient().from('tickets').delete().eq('submitted_by', userId);
+    if (error) throw error;
+  },
+
+  // True when the user has written in a conversation on a ticket someone
+  // else submitted (in practice: an admin's replies). Those messages would
+  // block deleting the user (author_id FK) and deleting them instead would
+  // rewrite another user's ticket history, so the user delete refuses.
+  async hasMessagesOnOthersTickets(userId: string): Promise<boolean> {
+    const { data, error } = await getSupabaseClient()
+      .from('ticket_messages')
+      .select('ticket_id, tickets!inner(submitted_by)')
+      .eq('author_id', userId)
+      .neq('tickets.submitted_by', userId)
+      .limit(1);
+    if (error) throw error;
+    return (data ?? []).length > 0;
+  },
+
+  // ticket_messages and attachments rows go with it via ON DELETE CASCADE
+  // (supabase/migrations/0001_init.sql). Storage objects are NOT covered by
+  // that — the route removes those before calling this.
+  async delete(id: string): Promise<boolean> {
+    const { data, error } = await getSupabaseClient().from('tickets').delete().eq('id', id).select('id');
+    if (error) throw error;
+    return (data ?? []).length > 0;
+  },
+
   async reopen(id: string): Promise<Ticket | undefined> {
     const { data, error } = await getSupabaseClient()
       .from('tickets')

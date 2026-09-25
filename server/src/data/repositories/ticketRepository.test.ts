@@ -128,3 +128,43 @@ describe('ticketRepository.list / listByUser', () => {
     expect(result[0].submittedBy).toBe(user1.id);
   });
 });
+
+describe('ticketRepository.delete', () => {
+  it('removes the ticket and its messages, and reports whether anything was deleted', async () => {
+    const user = await createUser('user10@example.com');
+    const ticket = await createTicket(user.id, user.name);
+    await ticketRepository.addMessage(ticket.id, 'Follow-up', user.id, user.name, 'user');
+
+    expect(await ticketRepository.delete(ticket.id)).toBe(true);
+    expect(await ticketRepository.findById(ticket.id)).toBeUndefined();
+    expect(await ticketRepository.delete(ticket.id)).toBe(false);
+  });
+});
+
+describe('ticketRepository.deleteByUser / hasMessagesOnOthersTickets', () => {
+  it("deleteByUser() removes only that user's tickets", async () => {
+    const user1 = await createUser('user11@example.com');
+    const user2 = await createUser('user12@example.com');
+    await createTicket(user1.id, user1.name);
+    await createTicket(user1.id, user1.name);
+    const kept = await createTicket(user2.id, user2.name);
+
+    await ticketRepository.deleteByUser(user1.id);
+
+    expect(await ticketRepository.listByUser(user1.id)).toEqual([]);
+    expect((await ticketRepository.list()).map((t) => t.id)).toEqual([kept.id]);
+  });
+
+  it("is true for an admin who replied on someone's ticket, false for a user replying on their own", async () => {
+    const user = await createUser('user13@example.com');
+    const admin = await createUser('admin3@example.com', 'admin');
+    const ticket = await createTicket(user.id, user.name);
+    await ticketRepository.addMessage(ticket.id, 'Own follow-up', user.id, user.name, 'user');
+
+    expect(await ticketRepository.hasMessagesOnOthersTickets(user.id)).toBe(false);
+    expect(await ticketRepository.hasMessagesOnOthersTickets(admin.id)).toBe(false);
+
+    await ticketRepository.addMessage(ticket.id, 'Admin reply', admin.id, admin.name, 'admin');
+    expect(await ticketRepository.hasMessagesOnOthersTickets(admin.id)).toBe(true);
+  });
+});

@@ -27,4 +27,5 @@ export const ticketsApi = {
 
   close: (id: string) => api.put<{ ticket: Ticket }>(`/tickets/${id}/close`),
   reopen: (id: string) => api.put<{ ticket: Ticket }>(`/tickets/${id}/reopen`),
+  remove: (id: string) => api.del<void>(`/tickets/${id}`),
 };

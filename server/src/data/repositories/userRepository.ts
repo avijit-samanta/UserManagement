@@ -89,6 +89,18 @@ export const userRepository = {
     return data ? fromRow(data as UserRow) : undefined;
   },
 
+  // Only the users row. Their tickets and attachments reference it without
+  // ON DELETE CASCADE, so DELETE /api/users/:id removes those first — a
+  // leftover reference makes this throw a 23503 FK violation instead.
+  async delete(id: string): Promise<boolean> {
+    const { data, error } = await getSupabaseClient().from('users').delete().eq('id', id).select('id');
+    if (error) {
+      if (isInvalidUuidError(error)) return false;
+      throw error;
+    }
+    return (data ?? []).length > 0;
+  },
+
   async create(input: CreateUserInput): Promise<User> {
     const { data, error } = await getSupabaseClient()
       .from('users')

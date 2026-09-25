@@ -5,7 +5,7 @@ import { TextField } from '../common/Input';
 import { attachmentsApi } from '../../api/attachments';
 import { ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-import { formatFileSize } from './formatFileSize';
+import { FileTable } from './FileTable';
 import type { Attachment } from '../../types';
 
 // Shown to both roles (see UserDashboardPage / AdminDashboardPage): every
@@ -106,62 +106,13 @@ export function FileRepository() {
       ) : attachments.length === 0 ? (
         <div className="empty-state">No files yet.</div>
       ) : (
-        <div className="table-scroll">
-          <table className="data-table" data-testid="file-repo-table">
-            <thead>
-              <tr>
-                <th>File Name</th>
-                <th>Topic</th>
-                <th>Uploaded By</th>
-                <th>Role</th>
-                <th>Uploaded At</th>
-                <th>Size</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {attachments.map((attachment) => {
-                const canDelete = user?.role === 'admin' || attachment.uploadedBy === user?.id;
-                return (
-                  <tr key={attachment.id} data-testid={`file-repo-row-${attachment.id}`}>
-                    <td>
-                      <a
-                        href={attachmentsApi.downloadUrl(attachment.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-testid="file-repo-download-link"
-                      >
-                        {attachment.fileName}
-                      </a>
-                    </td>
-                    <td>{attachment.topic}</td>
-                    <td>{attachment.uploadedByName}</td>
-                    <td>
-                      <span className="role-tag" data-testid="file-repo-role">
-                        {attachment.uploadedByRole}
-                      </span>
-                    </td>
-                    <td>{new Date(attachment.createdAt).toLocaleString()}</td>
-                    <td>{formatFileSize(attachment.size)}</td>
-                    <td>
-                      {canDelete && (
-                        <Button
-                          type="button"
-                          variant="danger"
-                          disabled={deletingId === attachment.id}
-                          onClick={() => handleDelete(attachment.id)}
-                          data-testid={`file-repo-delete-${attachment.id}`}
-                        >
-                          {deletingId === attachment.id ? 'Deleting…' : 'Delete'}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <FileTable
+          attachments={attachments}
+          currentUserId={user?.id}
+          isAdmin={user?.role === 'admin'}
+          deletingId={deletingId}
+          onDelete={handleDelete}
+        />
       )}
     </Card>
   );

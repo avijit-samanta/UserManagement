@@ -146,3 +146,16 @@ describe('attachmentRepository.delete', () => {
     expect(await attachmentRepository.delete('nope')).toBeUndefined();
   });
 });
+
+describe('attachmentRepository.deleteByUploader', () => {
+  it("removes only that uploader's attachments", async () => {
+    const user1 = await createUser('uploader1@example.com');
+    const user2 = await createUser('uploader2@example.com');
+    await attachmentRepository.create(uploadInput({ uploadedBy: user1.id }));
+    const kept = await attachmentRepository.create(uploadInput({ uploadedBy: user2.id }));
+
+    await attachmentRepository.deleteByUploader(user1.id);
+
+    expect((await attachmentRepository.listAll()).map((a) => a.id)).toEqual([kept.id]);
+  });
+});

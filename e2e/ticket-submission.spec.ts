@@ -26,6 +26,9 @@ test.describe('Submit New Request (data-driven)', () => {
 
     await page.getByTestId('nav-my-tickets').click();
 
+    // The list is paginated (20 per page) and other tests create tickets in
+    // parallel, so narrow it to this ticket rather than assume it's on page 1.
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     const row = page.locator('tr', { hasText: uniqueTitle });
     await expect(row).toBeVisible();
     await expect(row.getByText('open', { exact: true })).toBeVisible();
@@ -42,6 +45,7 @@ test.describe('Submit New Request (data-driven)', () => {
     await expect(page.getByText('Your request has been submitted to the administrator.')).toBeVisible();
 
     await page.getByTestId('nav-my-tickets').click();
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await page.locator('tr', { hasText: uniqueTitle }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Ticket details' });

@@ -43,6 +43,15 @@ function MyTicketsSection({ onAttachmentUploaded }: { onAttachmentUploaded: () =
     if (files.length > 0) onAttachmentUploaded();
   }
 
+  async function handleDelete(ticket: Ticket) {
+    await ticketsApi.remove(ticket.id);
+    setTickets((prev) => prev.filter((t) => t.id !== ticket.id));
+    if (selected?.id === ticket.id) setSelected(null);
+    // The ticket's attachments are deleted with it, so the File Repository
+    // tab (kept mounted by Reach Tabs) needs to refetch as well.
+    if ((ticket.attachments?.length ?? 0) > 0 || ticket.messages.some((m) => (m.attachments?.length ?? 0) > 0)) onAttachmentUploaded();
+  }
+
   async function handleReopen() {
     if (!selected) return;
     const { ticket } = await ticketsApi.reopen(selected.id);
@@ -55,7 +64,7 @@ function MyTicketsSection({ onAttachmentUploaded }: { onAttachmentUploaded: () =
       {loading ? (
         <div className="empty-state">Loading…</div>
       ) : (
-        <TicketList tickets={tickets} onSelect={setSelected} />
+        <TicketList tickets={tickets} onSelect={setSelected} onDelete={handleDelete} />
       )}
 
       <AppDialog isOpen={!!selected} onDismiss={() => setSelected(null)} ariaLabel="Ticket details">

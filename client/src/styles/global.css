@@ -256,9 +256,16 @@ a {
   color: var(--color-primary);
 }
 
-.app-body {
+/* The [data-reach-tabs] half of the selector is load-bearing: @reach/tabs'
+   stylesheet sets `[data-reach-tabs][data-orientation="vertical"] { display:
+   flex }`, which out-ranks a lone class and silently turned this grid into a
+   flex row — the nav and the card then sized to their content, so every
+   section rendered at a different width. */
+.app-body,
+.app-body[data-reach-tabs] {
   flex: 1;
   display: grid;
+  align-items: start;
   grid-template-columns: 240px 1fr;
   gap: var(--space-6);
   padding: var(--space-6);
@@ -273,10 +280,13 @@ a {
   }
 }
 
-.side-nav {
+.side-nav,
+.side-nav[data-reach-tab-list] {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* Reach's default tab-list tint; the items carry their own states. */
+  background: none;
 }
 
 .side-nav-item {
@@ -473,8 +483,22 @@ a {
   opacity: 0.85;
 }
 
+.btn-success {
+  background: var(--color-success);
+  color: var(--color-text-inverse);
+}
+
+.btn-success:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
 .btn-block {
   width: 100%;
+}
+
+.btn-sm {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
 }
 
 /* ---------- Table / list ---------- */
@@ -519,6 +543,95 @@ a {
 
 .data-table tbody tr.selected {
   background: var(--color-primary-soft);
+}
+
+.data-table th[aria-label='Actions'] {
+  width: 1%;
+}
+
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.sort-button:hover {
+  color: var(--color-text);
+}
+
+.sort-indicator {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.table-toolbar .form-input {
+  width: auto;
+}
+
+.table-toolbar .toolbar-search {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.toolbar-date {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.table-toolbar .toolbar-date .form-input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.table-toolbar > * {
+  max-width: 100%;
+}
+
+.data-table th {
+  white-space: nowrap;
+}
+
+/* Keep "TCK-000123" on one line. */
+.data-table td:first-child {
+  white-space: nowrap;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .empty-state {

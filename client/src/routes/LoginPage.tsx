@@ -95,10 +95,11 @@ export function LoginPage() {
             Quick Demo Login:
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button
+            <Button
               type="button"
-              className="button button-outline"
-              style={{ flex: 1, padding: '6px 8px', fontSize: 'var(--font-size-xs)' }}
+              variant="success"
+              className="btn-sm"
+              style={{ flex: 1 }}
               onClick={() => {
                 setEmail('admin@example.com');
                 setPassword('Admin@123');
@@ -106,11 +107,12 @@ export function LoginPage() {
               data-testid="fill-admin-button"
             >
               Demo Admin
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="button button-outline"
-              style={{ flex: 1, padding: '6px 8px', fontSize: 'var(--font-size-xs)' }}
+              variant="success"
+              className="btn-sm"
+              style={{ flex: 1 }}
               onClick={() => {
                 setEmail('user@example.com');
                 setPassword('User@123');
@@ -118,7 +120,7 @@ export function LoginPage() {
               data-testid="fill-user-button"
             >
               Demo User
-            </button>
+            </Button>
           </div>
         </div>
 

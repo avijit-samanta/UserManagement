@@ -40,6 +40,9 @@ test.describe('Ticket conversation: multiple messages, close, and reopen', () =>
 
     await adminPage.goto('/dashboard');
     await adminPage.getByTestId('nav-query-management').click();
+    // The list is paginated (20 per page) and other tests create tickets in
+    // parallel, so narrow it to this ticket rather than assume it's on page 1.
+    await adminPage.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await adminPage.locator('tr', { hasText: uniqueTitle }).click();
 
     for (const message of conversation.adminMessages) {
@@ -56,6 +59,7 @@ test.describe('Ticket conversation: multiple messages, close, and reopen', () =>
     // it needs the admin's attention again.
     await page.goto('/dashboard');
     await page.getByTestId('nav-my-tickets').click();
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await page.locator('tr', { hasText: uniqueTitle }).click();
     await page.getByTestId('ticket-respond-textarea').fill(conversation.userReply);
     await page.getByTestId('ticket-respond-button').click();
@@ -70,6 +74,7 @@ test.describe('Ticket conversation: multiple messages, close, and reopen', () =>
     // but now hidden) ticket row is visible/clickable again.
     await adminPage.reload();
     await adminPage.getByTestId('nav-query-management').click();
+    await adminPage.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await adminPage.locator('tr', { hasText: uniqueTitle }).click();
     await expect(adminPage.getByTestId('ticket-message').filter({ hasText: conversation.userReply })).toBeVisible();
     await expect(adminPage.getByTestId('ticket-message')).toHaveCount(conversation.adminMessages.length + 1);
@@ -87,6 +92,7 @@ test.describe('Ticket conversation: multiple messages, close, and reopen', () =>
     // the submitter can reopen it.
     await page.goto('/dashboard');
     await page.getByTestId('nav-my-tickets').click();
+    await page.getByTestId('ticket-filter-search').filter({ visible: true }).fill(uniqueTitle);
     await page.locator('tr', { hasText: uniqueTitle }).click();
     await expect(page.locator('.app-dialog-content .status-badge')).toHaveText('closed');
 

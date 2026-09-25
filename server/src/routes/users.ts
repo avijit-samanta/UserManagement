@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import { userRepository } from '../data/repositories/userRepository';
+import { ticketRepository } from '../data/repositories/ticketRepository';
+import { attachmentRepository } from '../data/repositories/attachmentRepository';
+import { getSupabaseClient } from '../data/supabaseClient';
+import { ATTACHMENTS_BUCKET } from '../data/storageBucket';
 import { hashPassword } from '../utils/password';
 import { toPublicUser } from '../models/types';
 import type { Role } from '../models/types';
@@ -71,6 +75,44 @@ router.put('/:id', asyncHandler(async (req, res) => {
     return;
   }
   res.json({ user: toPublicUser(updated) });
+}));
+
+// Removes the account along with everything it owns: its tickets (their
+// messages and attachment rows cascade) and any file it uploaded.
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const target = await userRepository.findById(req.params.id);
+  if (!target) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  // Also guarantees at least one admin always remains.
+  if (target.id === req.user!.id) {
+    res.status(400).json({ error: 'You cannot delete your own account' });
+    return;
+  }
+  // Checked before anything is removed, so a refusal leaves no partial delete.
+  if (await ticketRepository.hasMessagesOnOthersTickets(target.id)) {
+    res.status(409).json({
+      error: "This account has replied on other users' tickets and can't be deleted without losing that history",
+    });
+    return;
+  }
+
+  // Storage objects first, same reasoning as DELETE /api/tickets/:id: a
+  // storage failure then leaves every row in place for a retry.
+  // listVisibleToUser = files they uploaded + files on their tickets.
+  const attachments = await attachmentRepository.listVisibleToUser(target.id);
+  if (attachments.length > 0) {
+    const { error: storageError } = await getSupabaseClient()
+      .storage.from(ATTACHMENTS_BUCKET)
+      .remove(attachments.map((a) => a.storagePath));
+    if (storageError) throw storageError;
+  }
+
+  await ticketRepository.deleteByUser(target.id);
+  await attachmentRepository.deleteByUploader(target.id);
+  await userRepository.delete(target.id);
+  res.status(204).end();
 }));
 
 export default router;

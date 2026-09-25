@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ticketRepository } from '../data/repositories/ticketRepository';
 import { attachmentRepository } from '../data/repositories/attachmentRepository';
+import { getSupabaseClient } from '../data/supabaseClient';
+import { ATTACHMENTS_BUCKET } from '../data/storageBucket';
 import { requireAuth } from '../middleware/requireAuth';
 import { requireRole } from '../middleware/requireRole';
 import { upload } from '../middleware/upload';
@@ -197,6 +199,34 @@ router.put('/:id/reopen', asyncHandler(async (req, res) => {
 
   const ticket = await ticketRepository.reopen(req.params.id);
   res.json({ ticket: await withAttachments(ticket!) });
+}));
+
+// The admin can delete any ticket; a normal user only their own.
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const existing = await ticketRepository.findById(req.params.id);
+  if (!existing) {
+    res.status(404).json({ error: 'Ticket not found' });
+    return;
+  }
+  if (req.user!.role !== 'admin' && existing.submittedBy !== req.user!.id) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  // Same ordering rule as DELETE /api/attachments/:id: storage objects
+  // first, so a storage failure leaves the ticket (and its attachment rows)
+  // in place for a retry instead of orphaning files in the bucket. The DB
+  // cascade then removes the messages and attachment rows.
+  const attachments = await attachmentRepository.listForTicket(existing.id);
+  if (attachments.length > 0) {
+    const { error: storageError } = await getSupabaseClient()
+      .storage.from(ATTACHMENTS_BUCKET)
+      .remove(attachments.map((a) => a.storagePath));
+    if (storageError) throw storageError;
+  }
+
+  await ticketRepository.delete(existing.id);
+  res.status(204).end();
 }));
 
 export default router;
