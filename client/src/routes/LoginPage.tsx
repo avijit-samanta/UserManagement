@@ -90,6 +90,38 @@ export function LoginPage() {
           )}
         </form>
 
+        <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-3)', background: 'var(--color-surface-alt)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--color-border)' }}>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 'var(--font-weight-medium)' }}>
+            Quick Demo Login:
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              className="button button-outline"
+              style={{ flex: 1, padding: '6px 8px', fontSize: 'var(--font-size-xs)' }}
+              onClick={() => {
+                setEmail('admin@example.com');
+                setPassword('Admin@123');
+              }}
+              data-testid="fill-admin-button"
+            >
+              Demo Admin
+            </button>
+            <button
+              type="button"
+              className="button button-outline"
+              style={{ flex: 1, padding: '6px 8px', fontSize: 'var(--font-size-xs)' }}
+              onClick={() => {
+                setEmail('user@example.com');
+                setPassword('User@123');
+              }}
+              data-testid="fill-user-button"
+            >
+              Demo User
+            </button>
+          </div>
+        </div>
+
         <div className="auth-switch">
           Don't have an account? <Link to="/register">Create one</Link>
         </div>

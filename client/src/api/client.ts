@@ -6,17 +6,43 @@ export class ApiError extends Error {
   }
 }
 
+const TOKEN_STORAGE_KEY = 'helpdesk_session_token';
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage quota/permission errors
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // A FormData body (file uploads) must NOT get an explicit Content-Type —
   // the browser sets one itself with the multipart boundary the server
   // needs to parse it. Everything else keeps going through as JSON.
   const isFormData = options.body instanceof FormData;
+  const token = getStoredToken();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
   const res = await fetch(`/api${path}`, {
     credentials: 'include',
     headers: isFormData
-      ? { ...options.headers }
+      ? { ...authHeaders, ...options.headers }
       : {
           'Content-Type': 'application/json',
+          ...authHeaders,
           ...options.headers,
         },
     ...options,
@@ -33,6 +59,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      setStoredToken(null);
+    }
     const message = (body as { error?: string } | null)?.error ?? res.statusText;
     throw new ApiError(res.status, message);
   }

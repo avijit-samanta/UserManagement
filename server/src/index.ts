@@ -7,7 +7,8 @@ import path from 'path';
 // how it was launched (npm workspace vs. Docker WORKDIR), and dotenv's
 // default only checks cwd.
 import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
 
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -25,13 +26,8 @@ import usersRoutes from './routes/users';
 import ticketsRoutes from './routes/tickets';
 import attachmentsRoutes from './routes/attachments';
 
-// Default 8080, not 4000: dev mode (server/package.json's "dev" script)
-// explicitly sets PORT=4000 to match the Vite proxy target in
-// client/vite.config.ts, so this fallback only applies to the production
-// build/Docker image running standalone — keeping the two defaults distinct
-// means `npm run dev` and `npm start` can run at the same time without a
-// port collision.
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
+// AI Studio requires the dev server to listen on port 3000 (Cloud Run uses 8080 for Nginx).
+const PORT = 3000;
 const HTTPS_PORT = process.env.HTTPS_PORT ? Number(process.env.HTTPS_PORT) : 4443;
 // Bind explicitly to all IPv4 interfaces. Node's default (no host given)
 // can end up IPv6-only ([::]) on some setups, which some browsers/embedded
@@ -69,8 +65,12 @@ async function main() {
   app.use('/api/tickets', ticketsRoutes);
   app.use('/api/attachments', attachmentsRoutes);
 
-  const clientDist = path.resolve(__dirname, '../../client/dist');
-  if (fs.existsSync(clientDist)) {
+  const clientDist = [
+    path.resolve(process.cwd(), 'client/dist'),
+    path.resolve(__dirname, '../../client/dist'),
+  ].find((p) => fs.existsSync(p));
+
+  if (clientDist) {
     app.use(express.static(clientDist));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'));

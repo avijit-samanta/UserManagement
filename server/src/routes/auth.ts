@@ -46,7 +46,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   const token = createSession(user.id);
   setSessionCookie(res, token);
-  res.status(201).json({ user: toPublicUser(user) });
+  res.status(201).json({ user: toPublicUser(user), token });
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
@@ -64,18 +64,18 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const token = createSession(user.id);
   setSessionCookie(res, token);
-  res.json({ user: toPublicUser(user) });
+  res.json({ user: toPublicUser(user), token });
 }));
 
-router.post('/logout', requireAuth, (req, res) => {
+router.post('/logout', (req, res) => {
   const token = getSessionToken(req);
   if (token) destroySession(token);
   clearSessionCookie(res);
   res.json({ ok: true });
 });
 
-router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+router.get('/me', (req, res) => {
+  res.json({ user: req.user ?? null });
 });
 
 export default router;

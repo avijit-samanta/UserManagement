@@ -10,7 +10,11 @@ export const MAX_FILES_PER_REQUEST = 5;
 // ticket, etc.) leaves nothing behind to clean up — unlike the old
 // disk-storage version, there's no cleanupUploadedFiles() step needed
 // anymore; an unused buffer just gets garbage collected.
-export const upload = multer({
+const rawUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES, files: MAX_FILES_PER_REQUEST },
 });
+
+export const upload = {
+  array: (fieldName: string, maxCount?: number) => rawUpload.array(fieldName, maxCount) as any,
+};

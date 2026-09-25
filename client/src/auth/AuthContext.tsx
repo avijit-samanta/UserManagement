@@ -24,10 +24,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authApi
       .me()
       .then(({ user }) => {
-        setUser(user);
-        setStatus('authenticated');
+        if (user) {
+          setUser(user);
+          setStatus('authenticated');
+        } else {
+          setUser(null);
+          setStatus('anonymous');
+        }
       })
       .catch(() => {
+        setUser(null);
         setStatus('anonymous');
       });
   }, []);

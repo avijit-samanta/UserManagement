@@ -7,9 +7,12 @@
     "server"
   ],
   "scripts": {
-    "dev": "concurrently -k -n SERVER,CLIENT -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev": "npm run build:client && cross-env PORT=3000 DISABLE_HTTPS=true tsx server/src/index.ts",
+    "build:client": "npm run build -w client",
+    "build:server": "npm run build -w server",
     "build": "npm run build -w client && npm run build -w server",
-    "start": "npm run start -w server",
+    "lint": "npm run build -w client && npm run build -w server",
+    "start": "cross-env PORT=3000 DISABLE_HTTPS=true node server/dist/index.js",
     "certs:generate": "bash scripts/generate-certs.sh",
     "db:migrate": "node scripts/db-migrate.js",
     "test:unit": "npm run test -w server",
@@ -24,8 +27,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "concurrently": "^9.1.0",
     "cross-env": "^10.1.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "tsx": "^4.16.2",
+    "vite": "^8.3.1"
   }
 }

@@ -13,12 +13,22 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
+function isPlaceholder(val) {
+  if (!val) return true;
+  const lower = val.toLowerCase();
+  return lower.includes('your-project-ref') || lower.includes('your-db-password') || lower.includes('placeholder');
+}
+
 function loadDotEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
   for (const line of fs.readFileSync(filePath, 'utf-8').split('\n')) {
     const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-    if (match && !(match[1] in process.env)) {
-      process.env[match[1]] = match[2];
+    if (match) {
+      const key = match[1];
+      const val = match[2].trim();
+      if (!(key in process.env) || isPlaceholder(process.env[key]) || val) {
+        process.env[key] = val;
+      }
     }
   }
 }

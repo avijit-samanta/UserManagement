@@ -36,17 +36,26 @@ export function destroySession(token: string): void {
 export function setSessionCookie(res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'none',
+    secure: true,
     maxAge: SESSION_TTL_MS,
   });
 }
 
 export function clearSessionCookie(res: Response): void {
-  res.clearCookie(SESSION_COOKIE);
+  res.clearCookie(SESSION_COOKIE, {
+    httpOnly: true,
+    sameSite: 'none',
+    secure: true,
+  });
 }
 
 export function getSessionToken(req: Request): string | undefined {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearer = authHeader.substring(7).trim();
+    if (bearer) return bearer;
+  }
   return req.cookies?.[SESSION_COOKIE];
 }
 

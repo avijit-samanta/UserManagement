@@ -1,0 +1,6 @@
+{
+  "name": "Simple Help Desk",
+  "description": "A comprehensive help desk ticketing and user management system with role-based access control.",
+  "requestFramePermissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
