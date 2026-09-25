@@ -275,7 +275,8 @@ a {
 }
 
 @media (max-width: 800px) {
-  .app-body {
+  .app-body,
+  .app-body[data-reach-tabs] {
     grid-template-columns: 1fr;
   }
 }
@@ -587,6 +588,49 @@ a {
 .table-toolbar .toolbar-search {
   flex: 1 1 220px;
   min-width: 0;
+}
+
+/* A run of toolbar controls that wraps as one unit (see TicketList). */
+/* Groups grow into spare room but never shrink below their contents —
+   running out of room wraps the next group instead of squashing this one. */
+.toolbar-group {
+  display: flex;
+  flex: 1 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar-group .toolbar-search {
+  min-width: 200px;
+}
+
+/* Inside a group the date fields share the leftover width, so a wrapped
+   date row spans the toolbar instead of stopping short. */
+.toolbar-group .toolbar-date {
+  flex: 1 1 0;
+}
+
+.toolbar-group .toolbar-date .form-input {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 560px) {
+  .toolbar-group {
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .toolbar-group .toolbar-search {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+
+  /* Room for a readable date each; Clear drops below them on a phone. */
+  .toolbar-group .toolbar-date {
+    flex: 1 1 130px;
+  }
 }
 
 .toolbar-date {

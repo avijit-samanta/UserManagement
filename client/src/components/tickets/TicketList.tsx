@@ -118,74 +118,81 @@ export function TicketList({
   return (
     <div>
       <div className="table-toolbar" data-testid="ticket-filters">
-        <input
-          type="search"
-          className="form-input toolbar-search"
-          placeholder="Search ticket ID or title…"
-          aria-label="Search ticket ID or title"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          data-testid="ticket-filter-search"
-        />
-        <select
-          className="form-input"
-          aria-label="Filter by status"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as TicketStatus | 'all')}
-          data-testid="ticket-filter-status"
-        >
-          <option value="all">All statuses</option>
-          <option value="open">Open</option>
-          <option value="answered">Answered</option>
-          <option value="closed">Closed</option>
-        </select>
-        {showSubmitter && (
+        {/* Two groups that each stay on one line: when the toolbar has to
+            wrap, the whole date range + Clear moves down together instead
+            of Clear being stranded on a line of its own. */}
+        <div className="toolbar-group toolbar-group-grow">
+          <input
+            type="search"
+            className="form-input toolbar-search"
+            placeholder="Search ticket ID or title…"
+            aria-label="Search ticket ID or title"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            data-testid="ticket-filter-search"
+          />
           <select
             className="form-input"
-            aria-label="Filter by submitter"
-            value={submitter}
-            onChange={(e) => setSubmitter(e.target.value)}
-            data-testid="ticket-filter-submitter"
+            aria-label="Filter by status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as TicketStatus | 'all')}
+            data-testid="ticket-filter-status"
           >
-            <option value="all">All submitters</option>
-            {submitters.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
+            <option value="all">All statuses</option>
+            <option value="open">Open</option>
+            <option value="answered">Answered</option>
+            <option value="closed">Closed</option>
           </select>
-        )}
-        <label className="toolbar-date">
-          <span>From</span>
-          <input
-            type="date"
-            className="form-input"
-            value={dateFrom}
-            max={dateTo || undefined}
-            onChange={(e) => setDateFrom(e.target.value)}
-            data-testid="ticket-filter-date-from"
-          />
-        </label>
-        <label className="toolbar-date">
-          <span>To</span>
-          <input
-            type="date"
-            className="form-input"
-            value={dateTo}
-            min={dateFrom || undefined}
-            onChange={(e) => setDateTo(e.target.value)}
-            data-testid="ticket-filter-date-to"
-          />
-        </label>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={clearFilters}
-          disabled={!hasFilters}
-          data-testid="ticket-filter-clear"
-        >
-          Clear filters
-        </Button>
+          {showSubmitter && (
+            <select
+              className="form-input"
+              aria-label="Filter by submitter"
+              value={submitter}
+              onChange={(e) => setSubmitter(e.target.value)}
+              data-testid="ticket-filter-submitter"
+            >
+              <option value="all">All submitters</option>
+              {submitters.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="toolbar-group">
+          <label className="toolbar-date">
+            <span>From</span>
+            <input
+              type="date"
+              className="form-input"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              data-testid="ticket-filter-date-from"
+            />
+          </label>
+          <label className="toolbar-date">
+            <span>To</span>
+            <input
+              type="date"
+              className="form-input"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              data-testid="ticket-filter-date-to"
+            />
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={clearFilters}
+            disabled={!hasFilters}
+            data-testid="ticket-filter-clear"
+          >
+            Clear filters
+          </Button>
+        </div>
       </div>
 
       {error && <div className="form-message error">{error}</div>}
